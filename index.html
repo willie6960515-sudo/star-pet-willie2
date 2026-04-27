@@ -684,7 +684,10 @@
         <div class="w-full max-w-md flex-1 sci-fi-panel rounded-xl flex flex-col overflow-hidden min-h-[150px]">
             <div class="bg-slate-800 p-2 font-bold text-cyan-300 flex justify-between shrink-0">
                 <span class="text-sm">總量: <span id="total-idioms-count">0</span></span>
-                <button onclick="resetDefaultIdioms()" class="text-xs bg-red-900/50 text-red-300 px-2 rounded hover:bg-red-500 hover:text-white transition">重置系統</button>
+                <div class="flex gap-2">
+                    <button onclick="resetAllRecords()" class="text-xs bg-orange-900/50 text-orange-300 px-2 rounded hover:bg-orange-500 hover:text-white transition">清除異常紀錄</button>
+                    <button onclick="resetDefaultIdioms()" class="text-xs bg-red-900/50 text-red-300 px-2 rounded hover:bg-red-500 hover:text-white transition">重置系統</button>
+                </div>
             </div>
             <div id="all-idioms-list" class="flex-1 overflow-y-auto p-2"></div>
         </div>
@@ -1183,6 +1186,18 @@
             });
         };
 
+        window.resetAllRecords = () => {
+            window.openConfirmModal("確定要清除您的所有挑戰紀錄嗎？（用於修復榜單異常，不會刪除幻獸與星塵）", () => {
+                inventory.bossRecords = {};
+                inventory.aiRecords = {};
+                inventory.maxMeteorWaves = 0;
+                inventory.pkWins = 0;
+                inventory.pkTotal = 0;
+                saveInventory();
+                showToast("成績已淨化！請重新挑戰一次看看。", "#10b981");
+            });
+        };
+
         /* ================= 戰前準備 (PVE) ================= */
         let pendingMode = '', activePetId = 1, windSkillUsed = false; 
 
@@ -1420,16 +1435,22 @@
                 reward = Math.floor(reward);
                 inventory.stardust += reward;
                 
-                // 防呆保護
-                if (typeof inventory.bossRecords !== 'object' || Array.isArray(inventory.bossRecords)) {
+                // --- 嚴格防呆與存檔追蹤 ---
+                console.log(`[巨獸結算] 打倒 Boss ID: ${currentBoss.id}, 秒數: ${killTime}`);
+                console.log(`[巨獸結算] 存檔前紀錄:`, JSON.parse(JSON.stringify(inventory.bossRecords)));
+                
+                if (typeof inventory.bossRecords !== 'object' || inventory.bossRecords === null || Array.isArray(inventory.bossRecords)) {
                     inventory.bossRecords = {};
                 }
+                
                 let bId = String(currentBoss.id);
                 if (!inventory.bossRecords[bId] || killTime < inventory.bossRecords[bId]) {
                     inventory.bossRecords[bId] = killTime;
                 }
                 
                 if (killTime < inventory.fastestBossTime) inventory.fastestBossTime = killTime; 
+                
+                console.log(`[巨獸結算] 存檔後紀錄:`, JSON.parse(JSON.stringify(inventory.bossRecords)));
                 saveInventory();
                 
                 document.getElementById('boss-sprite').innerHTML = '<div class="text-6xl">☠️</div>';
@@ -2038,17 +2059,21 @@
                 if (isWin) inventory.pkWins++;
             }
             
-            // 防呆保護
-            if (typeof inventory.aiRecords !== 'object' || Array.isArray(inventory.aiRecords)) {
-                inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
-            }
-
             let timeUsed = 60 - pvpTimeLeft;
             if (isWin && pvpOpponentType === 'ai') {
+                // --- 嚴格防呆與存檔追蹤 ---
+                console.log(`[AI結算] 打倒 AI 難度: ${pvpAiDifficulty}, 秒數: ${timeUsed}`);
+                console.log(`[AI結算] 存檔前紀錄:`, JSON.parse(JSON.stringify(inventory.aiRecords)));
+                
+                if (typeof inventory.aiRecords !== 'object' || inventory.aiRecords === null || Array.isArray(inventory.aiRecords)) {
+                    inventory.aiRecords = {};
+                }
                 let diff = String(pvpAiDifficulty);
                 if (typeof inventory.aiRecords[diff] !== 'number' || timeUsed < inventory.aiRecords[diff]) {
                     inventory.aiRecords[diff] = timeUsed;
                 }
+                
+                console.log(`[AI結算] 存檔後紀錄:`, JSON.parse(JSON.stringify(inventory.aiRecords)));
             }
             
             let stardustReward = isWin ? 300 : 50;
