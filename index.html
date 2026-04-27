@@ -719,7 +719,7 @@
             unlockedPets: [], universalShards: 0, petsData: {},
             totalAnswered: 0, correctAnswers: 0, maxMeteorWaves: 0, fastestBossTime: 999,
             bossRecords: {}, customName: "",
-            pkWins: 0, pkTotal: 0, aiRecords: {} 
+            pkWins: 0, pkTotal: 0, aiRecords: { normal: 999, hard: 999, hell: 999, abyss: 999 }
         };
         let allUsersData = [];
 
@@ -883,9 +883,9 @@
                 if(inventory.pkWins === undefined) inventory.pkWins = 0;
                 if(inventory.pkTotal === undefined) inventory.pkTotal = 0;
                 
-                // 防呆：確保 aiRecords 與 bossRecords 是真正的物件，若不是則重置
-                if(typeof inventory.aiRecords !== 'object' || Array.isArray(inventory.aiRecords)) inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
-                if(typeof inventory.bossRecords !== 'object' || Array.isArray(inventory.bossRecords)) inventory.bossRecords = {};
+                // 防呆：確保 aiRecords 與 bossRecords 是真正的物件，若為 null 或陣列則重置
+                if(!inventory.aiRecords || typeof inventory.aiRecords !== 'object' || Array.isArray(inventory.aiRecords)) inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
+                if(!inventory.bossRecords || typeof inventory.bossRecords !== 'object' || Array.isArray(inventory.bossRecords)) inventory.bossRecords = {};
                 
                 // 清除可能因 Bug 存入的 'undefined' 髒資料
                 if (inventory.bossRecords && inventory.bossRecords["undefined"]) delete inventory.bossRecords["undefined"];
@@ -1189,12 +1189,13 @@
         window.resetAllRecords = () => {
             window.openConfirmModal("確定要清除您的所有挑戰紀錄嗎？（用於修復榜單異常，不會刪除幻獸與星塵）", () => {
                 inventory.bossRecords = {};
-                inventory.aiRecords = {};
+                inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
                 inventory.maxMeteorWaves = 0;
+                inventory.fastestBossTime = 999;
                 inventory.pkWins = 0;
                 inventory.pkTotal = 0;
                 saveInventory();
-                showToast("成績已淨化！請重新挑戰一次看看。", "#10b981");
+                showToast("異常成績已淨化！請重新挑戰", "#10b981");
             });
         };
 
@@ -1435,10 +1436,6 @@
                 reward = Math.floor(reward);
                 inventory.stardust += reward;
                 
-                // --- 嚴格防呆與存檔追蹤 ---
-                console.log(`[巨獸結算] 打倒 Boss ID: ${currentBoss.id}, 秒數: ${killTime}`);
-                console.log(`[巨獸結算] 存檔前紀錄:`, JSON.parse(JSON.stringify(inventory.bossRecords)));
-                
                 if (typeof inventory.bossRecords !== 'object' || inventory.bossRecords === null || Array.isArray(inventory.bossRecords)) {
                     inventory.bossRecords = {};
                 }
@@ -1449,8 +1446,6 @@
                 }
                 
                 if (killTime < inventory.fastestBossTime) inventory.fastestBossTime = killTime; 
-                
-                console.log(`[巨獸結算] 存檔後紀錄:`, JSON.parse(JSON.stringify(inventory.bossRecords)));
                 saveInventory();
                 
                 document.getElementById('boss-sprite').innerHTML = '<div class="text-6xl">☠️</div>';
@@ -2059,21 +2054,16 @@
                 if (isWin) inventory.pkWins++;
             }
             
+            if (typeof inventory.aiRecords !== 'object' || inventory.aiRecords === null || Array.isArray(inventory.aiRecords)) {
+                inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
+            }
+
             let timeUsed = 60 - pvpTimeLeft;
             if (isWin && pvpOpponentType === 'ai') {
-                // --- 嚴格防呆與存檔追蹤 ---
-                console.log(`[AI結算] 打倒 AI 難度: ${pvpAiDifficulty}, 秒數: ${timeUsed}`);
-                console.log(`[AI結算] 存檔前紀錄:`, JSON.parse(JSON.stringify(inventory.aiRecords)));
-                
-                if (typeof inventory.aiRecords !== 'object' || inventory.aiRecords === null || Array.isArray(inventory.aiRecords)) {
-                    inventory.aiRecords = {};
-                }
                 let diff = String(pvpAiDifficulty);
                 if (typeof inventory.aiRecords[diff] !== 'number' || timeUsed < inventory.aiRecords[diff]) {
                     inventory.aiRecords[diff] = timeUsed;
                 }
-                
-                console.log(`[AI結算] 存檔後紀錄:`, JSON.parse(JSON.stringify(inventory.aiRecords)));
             }
             
             let stardustReward = isWin ? 300 : 50;
@@ -2387,7 +2377,6 @@
                 myCurrentScore = inventory.stardust || 0;
                 hasPlayed = true;
             } else if (currentBoard === 'speed') {
-                // 強制轉換成字串，避免型別不對齊
                 const selectedBossId = String(document.getElementById('leaderboard-boss-select').value);
                 sortedData = sortedData.map(u => {
                     let bossTime = 999;
