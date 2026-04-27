@@ -2334,12 +2334,12 @@
         }
 
         function renderLeaderboard() {
-            const listEl = document.getElementById('leaderboard-list'); 
+            const listEl = document.getElementById('leaderboard-list');
             listEl.innerHTML = '';
-            
+
             let sortedData = [...allUsersData];
             let valueKey = '', unit = '', formatFn = (val) => val;
-            
+
             let myCurrentScore = null;
             let hasPlayed = false;
 
@@ -2357,7 +2357,7 @@
                 sortedData = sortedData.filter(u => u.currentBossTime < 999);
                 sortedData.sort((a, b) => a.currentBossTime - b.currentBossTime);
                 valueKey = 'currentBossTime'; unit = '秒'; formatFn = (v) => v.toFixed(1);
-                
+
                 if (inventory.bossRecords && inventory.bossRecords[selectedBossId]) {
                     myCurrentScore = inventory.bossRecords[selectedBossId];
                     hasPlayed = true;
@@ -2372,7 +2372,7 @@
                 sortedData.forEach(u => u.accuracy = (u.correctAnswers / u.totalAnswered) * 100);
                 sortedData.sort((a, b) => b.accuracy - a.accuracy);
                 valueKey = 'accuracy'; unit = '%正確'; formatFn = (v) => v.toFixed(1);
-                
+
                 if (inventory.totalAnswered > 0) {
                     myCurrentScore = (inventory.correctAnswers / inventory.totalAnswered) * 100;
                     hasPlayed = true;
@@ -2385,7 +2385,7 @@
                     return b.winRate - a.winRate;
                 });
                 valueKey = 'winRate'; unit = '%勝率'; formatFn = (v) => v.toFixed(1);
-                
+
                 if (inventory.pkTotal > 0) {
                     myCurrentScore = (inventory.pkWins / inventory.pkTotal) * 100;
                     hasPlayed = true;
@@ -2399,21 +2399,32 @@
                 sortedData = sortedData.filter(u => u.currentAiTime < 999);
                 sortedData.sort((a, b) => a.currentAiTime - b.currentAiTime);
                 valueKey = 'currentAiTime'; unit = '秒'; formatFn = (v) => v.toFixed(1);
-                
+
                 if (inventory.aiRecords && inventory.aiRecords[aiDifficulty] < 999) {
                     myCurrentScore = inventory.aiRecords[aiDifficulty];
                     hasPlayed = true;
                 }
             }
 
+            const TOP_N = 10;
             let isUserRanked = false;
+            let myRank = -1;
 
-            sortedData.forEach((user, index) => {
+            if (currentUser) {
+                myRank = sortedData.findIndex(u => u.id === currentUser.uid);
+            }
+
+            console.log(`[榜單更新] 模式: ${currentBoard}, 篩選條件: ${document.getElementById('leaderboard-boss-select') ? document.getElementById('leaderboard-boss-select').value : '無'}`);
+            console.log(`[榜單更新] 該條件上榜總人數: ${sortedData.length}, 我的真實名次: ${myRank !== -1 ? myRank + 1 : '未入榜'}`);
+
+            const displayData = sortedData.slice(0, TOP_N);
+
+            displayData.forEach((user, index) => {
                 let rankIcon = `<span class="text-slate-400 font-bold">#${index + 1}</span>`;
                 let bgClass = "bg-slate-800";
-                
+
                 const isMe = currentUser && user.id === currentUser.uid;
-                
+
                 if (isMe) {
                     isUserRanked = true;
                     bgClass = "bg-cyan-900/60 border-2 border-cyan-400 shadow-[0_0_15px_cyan] scale-[1.02] transform transition-all z-10 relative";
@@ -2425,14 +2436,14 @@
 
                 let val = user[valueKey] !== undefined ? formatFn(user[valueKey]) : 0;
                 let displayName = user.customName || user.displayName || '神秘使者';
-                
+
                 let extraInfo = '';
                 if (currentBoard === 'pkwin') {
                     extraInfo = `<div class="text-xs text-indigo-400 mt-1">${user.pkWins}勝 / ${user.pkTotal}場</div>`;
                 }
 
                 let item = document.createElement('div');
-                if (isMe) item.id = 'my-rank-row'; 
+                if (isMe) item.id = 'my-rank-row';
                 item.className = `leaderboard-item p-3 rounded-xl flex justify-between items-center ${bgClass}`;
                 item.innerHTML = `
                     <div class="flex items-center gap-3">
@@ -2451,29 +2462,42 @@
                 `;
                 listEl.appendChild(item);
             });
-            
+
             if (currentUser && !isUserRanked) {
                 let unrankedMsg = '尚未挑戰';
                 let scoreDisplay = '-';
-                
-                if (hasPlayed && myCurrentScore !== null) {
+                let rankText = '-';
+
+                if (myRank >= TOP_N) {
+                    unrankedMsg = `真實排名：${myRank + 1}`;
+                    rankText = `#${myRank + 1}`;
+                    let myData = sortedData[myRank];
+                    scoreDisplay = `${formatFn(myData[valueKey])} <span class="text-[10px] md:text-xs text-slate-400">${unit}</span>`;
+                }
+                else if (hasPlayed && myCurrentScore !== null) {
                     unrankedMsg = '尚未入榜';
                     if (currentBoard === 'scholar' && inventory.totalAnswered < 10) unrankedMsg = '需答滿10題';
                     if (currentBoard === 'pkwin' && inventory.pkTotal < 10) unrankedMsg = '需打滿10場';
-                    scoreDisplay = `${formatFn(myCurrentScore)} <span class="text-[10px] md:text-xs">${unit}</span>`;
+                    scoreDisplay = `${formatFn(myCurrentScore)} <span class="text-[10px] md:text-xs text-slate-400">${unit}</span>`;
                 }
-                
+
                 let extraInfo = '';
                 if (currentBoard === 'pkwin' && hasPlayed) {
                     extraInfo = `<div class="text-xs text-slate-500 mt-1">${inventory.pkWins}勝 / ${inventory.pkTotal}場</div>`;
                 }
 
+                if (listEl.children.length > 0) {
+                    let divider = document.createElement('div');
+                    divider.className = "w-full border-t border-slate-600 my-2";
+                    listEl.appendChild(divider);
+                }
+
                 let item = document.createElement('div');
-                item.id = 'my-rank-row'; 
-                item.className = `leaderboard-item p-3 rounded-xl flex justify-between items-center bg-slate-800/80 border-2 border-dashed border-slate-500 mt-2 opacity-90`;
+                item.id = 'my-rank-row';
+                item.className = `leaderboard-item p-3 rounded-xl flex justify-between items-center bg-slate-800/80 border-2 border-dashed border-slate-500 opacity-90`;
                 item.innerHTML = `
                     <div class="flex items-center gap-3">
-                        <div class="text-xl w-8 text-center text-slate-500 font-bold">-</div>
+                        <div class="text-xl w-8 text-center text-slate-400 font-bold">${rankText}</div>
                         <div class="flex flex-col">
                             <div class="font-bold text-slate-300">
                                 ${inventory.customName || '我'}
@@ -2490,7 +2514,7 @@
             }
 
             if (listEl.children.length === 0) {
-                listEl.innerHTML = '<div class="text-center text-slate-500 mt-10 text-sm md:text-base">目前榜單空缺，等你來挑戰！</div>'; 
+                listEl.innerHTML = '<div class="text-center text-slate-500 mt-10 text-sm md:text-base">目前榜單空缺，等你來挑戰！</div>';
             }
 
             setTimeout(() => {
