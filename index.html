@@ -1,0 +1,2505 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>星際幻獸使 - 期末特訓</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #0f172a; 
+            color: #e2e8f0;
+            overscroll-behavior-y: none;
+            touch-action: none; /* 嚴格禁止手機瀏覽器下拉重整或滑動 */
+            user-select: none;
+            overflow: hidden;
+            /* 適配所有裝置真實可視高度 */
+            height: 100dvh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* 螢幕主體自適應剩餘空間 */
+        .screen { 
+            display: none; 
+            width: 100%; 
+            flex: 1; 
+            min-height: 0; 
+        }
+        .screen.active { display: flex; }
+
+        .sci-fi-panel {
+            background: rgba(30, 41, 59, 0.85);
+            border: 2px solid #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3) inset, 0 0 10px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+        }
+
+        /* 隕石動畫改為相對比例，適應任何螢幕高度 */
+        @keyframes fall {
+            0% { top: -20%; opacity: 0; }
+            10% { opacity: 1; }
+            100% { top: 100%; }
+        }
+        .meteor { animation: fall linear forwards; position: absolute; }
+        
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        .damage-flash { animation: damageFlash 0.3s ease-out; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
+            40%, 60% { transform: translate3d(8px, 0, 0); }
+        }
+        @keyframes damageFlash {
+            0% { background-color: rgba(239, 68, 68, 0.6); }
+            100% { background-color: transparent; }
+        }
+
+        @keyframes petDash {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(40px, -40px) scale(1.1); filter: brightness(1.5); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+        .pet-attack-anim { animation: petDash 0.4s ease-out; }
+        
+        @keyframes critTextAnim {
+            0% { transform: scale(0.5) translateY(0); opacity: 0; }
+            50% { transform: scale(1.2) translateY(-20px); opacity: 1; }
+            100% { transform: scale(1) translateY(-40px); opacity: 0; }
+        }
+        .crit-text { animation: critTextAnim 0.8s ease-out forwards; z-index: 60;}
+
+        @keyframes petMeteorDash {
+            0% { transform: translate(0, 0) scale(1); }
+            40% { transform: translate(var(--dash-x), var(--dash-y)) scale(1.3); filter: brightness(1.5) drop-shadow(0 0 15px cyan); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+        .pet-meteor-dash-anim { animation: petMeteorDash 0.35s ease-out forwards; z-index: 50; }
+
+        @keyframes gachaSpin {
+            0% { transform: rotate(0deg) scale(1); filter: hue-rotate(0deg); }
+            50% { transform: rotate(180deg) scale(1.2); filter: hue-rotate(180deg); }
+            100% { transform: rotate(360deg) scale(1); filter: hue-rotate(360deg); }
+        }
+        .gacha-magic { animation: gachaSpin 2s ease-in-out; }
+
+        .leaderboard-item { transition: all 0.5s ease-in-out; }
+        .btn-press:active { transform: scale(0.95); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        select option { background-color: #1e293b; color: #fff; }
+
+        /* PvP 專用動畫 */
+        @keyframes spinSlow { 100% { transform: rotate(360deg); } }
+        .blackhole-anim { animation: spinSlow 3s linear infinite; }
+        
+        @keyframes screenFlash {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
+        .pvp-flash { animation: screenFlash 0.5s ease-out; z-index: 99; }
+    </style>
+</head>
+<body>
+
+    <div id="pvp-flash-overlay" class="fixed inset-0 pointer-events-none hidden z-[150]"></div>
+
+    <!-- 頂部資源列 -->
+    <header class="bg-slate-900 border-b-2 border-cyan-800 p-2 md:p-3 flex justify-between items-center z-50 shadow-[0_4px_20px_rgba(6,182,212,0.2)] shrink-0">
+        <div class="text-lg md:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 cursor-pointer shrink-0 mr-2 flex items-center gap-1 md:gap-2" onclick="goHome()">
+            <i class="fas fa-satellite text-cyan-400"></i>
+            <span id="player-display-name">連線中...</span>
+        </div>
+        <div class="flex gap-1 md:gap-3 text-[10px] md:text-sm font-bold shrink-0">
+            <div class="bg-slate-800 px-1.5 md:px-2 py-1 rounded-full border border-yellow-500/50 flex items-center gap-1">
+                <i class="fas fa-star text-yellow-400"></i> <span id="inv-stardust" class="text-yellow-100">0</span>
+            </div>
+            <div class="bg-slate-800 px-1.5 md:px-2 py-1 rounded-full border border-red-500/50 flex items-center gap-1">
+                <i class="fas fa-drumstick-bite text-red-400"></i> <span id="inv-meat" class="text-red-100">0</span>
+            </div>
+            <div class="bg-slate-800 px-1.5 md:px-2 py-1 rounded-full border border-purple-500/50 flex items-center gap-1">
+                <i class="fas fa-gem text-purple-400"></i> <span id="inv-stone" class="text-purple-100">0</span>
+            </div>
+            <div class="bg-slate-800 px-1.5 md:px-2 py-1 rounded-full border border-pink-500/50 flex items-center gap-1" title="集滿3個可兌換新幻獸">
+                <i class="fas fa-puzzle-piece text-pink-400"></i> <span id="inv-shards" class="text-pink-100">0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================= 登入畫面 ================= -->
+    <main id="screen-login" class="screen active flex-col items-center justify-center p-4 overflow-y-auto relative bg-slate-900 z-50">
+        <i class="fas fa-globe-asia text-6xl text-cyan-500 mb-4 animate-pulse"></i>
+        <h1 class="text-4xl font-black text-cyan-300 mb-2 tracking-widest drop-shadow-[0_0_10px_rgba(103,232,249,0.5)]">星際幻獸使</h1>
+        <p class="text-slate-400 mb-8 text-center text-sm">期末特訓連線版：與全班競爭排行榜榮耀！</p>
+        <button id="btn-google-login" class="btn-press sci-fi-panel rounded-full px-8 py-4 flex items-center gap-3 text-xl font-bold hover:bg-cyan-900/50 transition">
+            <i class="fab fa-google text-red-500"></i> <span>使用 Google 帳號登入</span>
+        </button>
+    </main>
+
+    <!-- 暱稱設定彈窗 -->
+    <div id="modal-nickname" class="fixed inset-0 bg-slate-900/95 z-[110] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full border-cyan-500/50 text-center shadow-[0_0_30px_rgba(6,182,212,0.2)] max-h-full overflow-y-auto">
+            <i class="fas fa-user-astronaut text-6xl text-cyan-400 mb-4 animate-bounce"></i>
+            <h3 class="text-2xl font-black text-white mb-2">設定您的特工代號</h3>
+            <p class="text-slate-400 text-sm mb-6">這個名稱將會顯示在全班的榮譽榜上！<br>(例如：601-05 王小明)</p>
+            <input id="input-nickname" type="text" placeholder="輸入您的專屬暱稱..." class="w-full p-3 rounded-xl bg-slate-800 text-white border-2 border-slate-600 focus:border-cyan-400 outline-none mb-6 text-center font-bold text-lg">
+            <button onclick="saveNickname()" class="w-full btn-press bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-xl font-bold text-lg shadow-[0_0_15px_rgba(6,182,212,0.5)]">
+                確認代號
+            </button>
+        </div>
+    </div>
+
+    <!-- ================= 初始選擇畫面 ================= -->
+    <main id="screen-starter" class="screen flex-col items-center justify-center p-4 overflow-y-auto relative bg-slate-900 z-40">
+        <h1 class="text-3xl font-black text-cyan-300 mb-2 mt-4 tracking-widest drop-shadow-[0_0_10px_rgba(103,232,249,0.5)]">締結星際契約</h1>
+        <p class="text-slate-400 mb-6 text-center text-sm">請選擇你的第一隻專屬幻獸夥伴<br>(未來可透過星空召喚解鎖其他幻獸)</p>
+        
+        <div class="flex flex-col md:flex-row gap-4 w-full max-w-4xl pb-4 justify-center">
+            <div class="sci-fi-panel flex-1 rounded-2xl p-4 border-red-500/50 flex flex-col items-center cursor-pointer transition-transform hover:scale-105" onclick="selectStarter(1)">
+                <img src="https://i.postimg.cc/dDH16LBN/13-xiao-huo-xi.png" class="h-20 w-20 md:h-24 md:w-24 object-contain mb-2 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+                <div class="text-xl font-bold text-red-400">小火蜥</div>
+                <div class="text-sm text-slate-300 mt-2 text-center">烈焰系<br><span class="text-[10px] md:text-xs text-slate-400">減少防禦戰的干擾選項</span></div>
+            </div>
+            <div class="sci-fi-panel flex-1 rounded-2xl p-4 border-yellow-500/50 flex flex-col items-center cursor-pointer transition-transform hover:scale-105" onclick="selectStarter(2)">
+                <img src="https://i.postimg.cc/qgbRwzwM/16-dian-qi-you-lang.png" class="h-20 w-20 md:h-24 md:w-24 object-contain mb-2 drop-shadow-[0_0_10px_rgba(234,179,8,0.5)]">
+                <div class="text-xl font-bold text-yellow-400">電氣幼狼</div>
+                <div class="text-sm text-slate-300 mt-2 text-center">迅雷系<br><span class="text-[10px] md:text-xs text-slate-400">減緩敵人攻擊與掉落速度</span></div>
+            </div>
+            <div class="sci-fi-panel flex-1 rounded-2xl p-4 border-emerald-500/50 flex flex-col items-center cursor-pointer transition-transform hover:scale-105" onclick="selectStarter(3)">
+                <img src="https://i.postimg.cc/phVWYHnH/19-chi-lun-xiao-gui.png" class="h-20 w-20 md:h-24 md:w-24 object-contain mb-2 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">
+                <div class="text-xl font-bold text-emerald-400">齒輪小龜</div>
+                <div class="text-sm text-slate-300 mt-2 text-center">大地系<br><span class="text-[10px] md:text-xs text-slate-400">增加過關後的肉塊收益</span></div>
+            </div>
+        </div>
+        
+        <div class="text-slate-400 my-2">或將命運交給宇宙</div>
+        
+        <button onclick="selectStarter('random')" class="btn-press bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 px-8 rounded-full shadow-[0_0_15px_rgba(219,39,119,0.5)] border-2 border-pink-400">
+            <i class="fas fa-dice"></i> 隨機盲盒 (抽取 1~5 號幻獸)
+        </button>
+    </main>
+
+    <!-- ================= 主基地 ================= -->
+    <main id="screen-home" class="screen flex-col items-center p-4 overflow-y-auto relative">
+        <h1 class="text-3xl font-black text-cyan-300 mb-6 mt-2 tracking-widest drop-shadow-[0_0_10px_rgba(103,232,249,0.5)] shrink-0">期末特訓任務</h1>
+        
+        <div class="w-full max-w-md grid grid-cols-2 gap-3 md:gap-4 mb-4 shrink-0">
+            <button onclick="openPvPPetModal()" class="col-span-2 btn-press bg-gradient-to-r from-indigo-900 to-purple-900 rounded-xl p-4 md:p-5 flex items-center gap-4 border-2 border-indigo-400 shadow-[0_0_15px_indigo] group">
+                <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-slate-900 flex items-center justify-center border-2 border-indigo-400 group-hover:bg-indigo-800 transition shrink-0">
+                    <i class="fas fa-khanda text-2xl md:text-3xl text-indigo-400"></i>
+                </div>
+                <div class="text-left flex-1">
+                    <div class="text-lg md:text-xl font-bold text-indigo-300 drop-shadow-[0_0_5px_indigo]">星際競技場</div>
+                    <div class="text-[10px] md:text-xs text-indigo-200">1v1 拔河激戰 (對抗玩家/AI)</div>
+                </div>
+            </button>
+
+            <button onclick="openSelectPetModal('meteor')" class="col-span-2 btn-press sci-fi-panel rounded-xl p-3 md:p-4 flex items-center gap-4 group">
+                <div class="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-800 flex items-center justify-center border-2 border-yellow-400 group-hover:bg-yellow-900/50 transition shrink-0">
+                    <i class="fas fa-meteor text-xl md:text-2xl text-yellow-400"></i>
+                </div>
+                <div class="text-left flex-1">
+                    <div class="text-base md:text-lg font-bold text-yellow-300">隕石防禦戰</div>
+                    <div class="text-[10px] md:text-xs text-slate-400">成語配對 (無盡防禦)</div>
+                </div>
+            </button>
+
+            <button onclick="openSelectPetModal('boss')" class="col-span-2 btn-press sci-fi-panel rounded-xl p-3 md:p-4 flex items-center gap-4 border-red-500/50 group">
+                <div class="w-12 h-12 md:w-14 md:h-14 rounded-full bg-slate-800 flex items-center justify-center border-2 border-red-500 group-hover:bg-red-900/50 transition shrink-0">
+                    <i class="fas fa-dragon text-xl md:text-2xl text-red-500"></i>
+                </div>
+                <div class="text-left flex-1">
+                    <div class="text-base md:text-lg font-bold text-red-400">巨獸討伐戰</div>
+                    <div class="text-[10px] md:text-xs text-slate-400">十二星骸 (賺取星塵)</div>
+                </div>
+            </button>
+            
+            <button onclick="showPetRoom()" class="btn-press sci-fi-panel rounded-xl p-3 md:p-4 flex flex-col items-center justify-center gap-2 border-emerald-500/50">
+                <i class="fas fa-paw text-2xl md:text-3xl text-emerald-400"></i>
+                <div class="font-bold text-sm md:text-base text-emerald-300">幻獸培育</div>
+            </button>
+
+            <button onclick="showLeaderboard()" class="btn-press sci-fi-panel rounded-xl p-3 md:p-4 flex flex-col items-center justify-center gap-2 border-purple-500/50">
+                <i class="fas fa-trophy text-2xl md:text-3xl text-purple-400"></i>
+                <div class="font-bold text-sm md:text-base text-purple-300">全班榮譽榜</div>
+            </button>
+
+            <button onclick="showGacha()" class="col-span-2 btn-press sci-fi-panel rounded-xl p-3 md:p-4 flex flex-col items-center justify-center gap-2 border-pink-500/50 relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-pink-600/20 animate-pulse"></div>
+                <i class="fas fa-dharmachakra text-2xl md:text-3xl text-pink-400 relative z-10"></i>
+                <div class="font-bold text-sm md:text-base text-pink-300 relative z-10">星空召喚陣 (抽卡)</div>
+            </button>
+        </div>
+
+        <div class="flex gap-4 w-full max-w-md mt-auto pt-4 border-t border-slate-700 shrink-0">
+            <button onclick="showMistakesScreen()" class="btn-press flex-1 bg-rose-900/50 text-rose-300 rounded-lg p-2 font-bold border border-rose-700 text-sm">
+                <i class="fas fa-book-dead"></i> 戰損紀錄
+            </button>
+            <button onclick="openPasswordModal()" class="btn-press flex-1 bg-slate-800 text-slate-300 rounded-lg p-2 font-bold border border-slate-600 text-sm">
+                <i class="fas fa-database"></i> 晶片庫
+            </button>
+        </div>
+        <button onclick="doLogout()" class="mt-4 text-slate-500 text-xs hover:text-white pb-4 shrink-0"><i class="fas fa-sign-out-alt"></i> 登出帳號</button>
+    </main>
+
+    <!-- ================= 戰前選擇彈窗 (PVE) ================= -->
+    <div id="modal-select-pet" class="fixed inset-0 bg-slate-900/95 z-[100] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-md w-full border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.2)] max-h-full overflow-y-auto">
+            <h3 class="text-2xl font-black text-cyan-300 mb-4 text-center" id="select-pet-title">作戰準備</h3>
+            
+            <div class="mb-4">
+                <label class="text-cyan-400 font-bold text-sm mb-2 block"><i class="fas fa-book-open"></i> 選擇特訓範圍</label>
+                <div class="relative">
+                    <select id="select-lesson-range" class="w-full bg-slate-800 text-cyan-300 py-3 px-4 rounded-xl border-2 border-slate-600 focus:border-cyan-400 outline-none font-bold text-center appearance-none cursor-pointer">
+                        <option value="all">🏆 綜合練習 (100% 獎勵)</option>
+                        <option value="L7">📖 第七課：棒球英雄夢 (50% 獎勵)</option>
+                        <option value="L8">📖 第八課：夢幻全壘打 (50% 獎勵)</option>
+                        <option value="L9">📖 第九課：單車遊日月潭 (50% 獎勵)</option>
+                        <option value="L10">📖 第十課：孫悟空借芭蕉扇 (50% 獎勵)</option>
+                        <option value="L11">📖 第十一課：最後一片葉子 (50% 獎勵)</option>
+                        <option value="L12">📖 第十二課：閱讀課 (50% 獎勵)</option>
+                        <option value="custom">🛠️ 自訂晶片 (手動輸入)</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-cyan-500 pointer-events-none"></i>
+                </div>
+            </div>
+
+            <label class="text-cyan-400 font-bold text-sm mb-2 block"><i class="fas fa-paw"></i> 選擇出戰幻獸</label>
+            <div id="select-pet-grid" class="flex justify-center gap-3 mb-4 flex-wrap"></div>
+            
+            <div class="bg-slate-800 p-3 rounded-xl border border-slate-600 mb-6 min-h-[80px]">
+                <div id="select-pet-skill-name" class="font-bold text-yellow-400 mb-1 text-sm">技能名稱</div>
+                <div id="select-pet-skill-desc" class="text-slate-300 text-xs leading-relaxed">技能效果說明...</div>
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="closeSelectPetModal()" class="flex-1 btn-press bg-slate-700 text-white p-3 rounded-xl font-bold">取消</button>
+                <button onclick="confirmDeployment()" class="flex-2 w-2/3 btn-press bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-xl font-bold shadow-[0_0_15px_rgba(6,182,212,0.5)]">
+                    <i class="fas fa-rocket"></i> 出擊
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= PvP 專屬選擇彈窗 ================= -->
+    <div id="modal-pvp-pet" class="fixed inset-0 bg-slate-900/95 z-[100] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-md w-full border-indigo-500/50 shadow-[0_0_30px_rgba(99,102,241,0.3)] max-h-full overflow-y-auto">
+            <h3 class="text-2xl font-black text-indigo-400 mb-4 text-center"><i class="fas fa-khanda"></i> 競技場出戰設定</h3>
+            
+            <div class="mb-4">
+                <label class="text-indigo-300 font-bold text-sm mb-2 block"><i class="fas fa-book-open"></i> 競技題庫範圍</label>
+                <div class="relative">
+                    <select id="pvp-lesson-range" class="w-full bg-slate-800 text-indigo-300 py-3 px-4 rounded-xl border-2 border-slate-600 focus:border-indigo-400 outline-none font-bold text-center appearance-none cursor-pointer text-sm">
+                        <option value="all">🏆 綜合競技 (全範圍)</option>
+                        <option value="L7">📖 第七課：棒球英雄夢</option>
+                        <option value="L8">📖 第八課：夢幻全壘打</option>
+                        <option value="L9">📖 第九課：單車遊日月潭</option>
+                        <option value="L10">📖 第十課：孫悟空借芭蕉扇</option>
+                        <option value="L11">📖 第十一課：最後一片葉子</option>
+                        <option value="L12">📖 第十二課：閱讀課</option>
+                        <option value="custom">🛠️ 自訂晶片 (手動輸入)</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-indigo-500 pointer-events-none"></i>
+                </div>
+            </div>
+
+            <label class="text-indigo-300 font-bold text-sm mb-2 block"><i class="fas fa-paw"></i> 選擇出戰幻獸 (決定干擾技能)</label>
+            <div id="pvp-pet-grid" class="flex justify-center gap-2 md:gap-3 mb-4 flex-wrap"></div>
+            
+            <div class="bg-slate-800 p-3 rounded-xl border border-indigo-900 mb-6 min-h-[90px]">
+                <div class="flex justify-between items-center mb-1">
+                    <div id="pvp-pet-skill-name" class="font-bold text-indigo-300 text-sm">PvP 專屬技能</div>
+                    <div id="pvp-pet-stage-badge" class="text-[10px] px-2 py-1 rounded bg-slate-700 text-slate-300">幼年期</div>
+                </div>
+                <div id="pvp-pet-skill-desc" class="text-slate-400 text-xs leading-relaxed whitespace-pre-line mt-1">...</div>
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="closePvPPetModal()" class="flex-1 btn-press bg-slate-700 text-white p-3 rounded-xl font-bold">取消</button>
+                <button onclick="confirmPvPPet()" class="flex-2 w-2/3 btn-press bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-xl font-bold shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+                    下一步 <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PvP 模式選擇 -->
+    <div id="modal-pvp-mode" class="fixed inset-0 bg-slate-900/95 z-[105] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full border-indigo-500/50 text-center">
+            <h3 class="text-2xl font-black text-white mb-6">選擇競技模式</h3>
+            <button onclick="startPvPMatchmaking()" class="w-full btn-press bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-2xl font-bold text-lg mb-4 shadow-[0_0_15px_rgba(79,70,229,0.5)]">
+                <i class="fas fa-satellite-dish animate-pulse"></i> 尋找星際對手 (排名戰)
+            </button>
+            <div class="text-slate-500 mb-4 text-sm">- 或是 -</div>
+            <button onclick="openPvPAIModal()" class="w-full btn-press bg-slate-800 border-2 border-indigo-900 text-indigo-300 p-4 rounded-2xl font-bold text-lg mb-6 hover:bg-slate-700 transition">
+                <i class="fas fa-robot"></i> 模擬對戰 (AI 練習賽)
+            </button>
+            <button onclick="closePvPModeModal()" class="text-slate-400 underline">返回重選</button>
+        </div>
+    </div>
+
+    <!-- PvP AI 難度選擇 -->
+    <div id="modal-pvp-ai" class="fixed inset-0 bg-slate-900/95 z-[110] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full border-indigo-500/50 text-center">
+            <h3 class="text-2xl font-black text-white mb-4">選擇 AI 模擬難度</h3>
+            <div class="flex flex-col gap-3 mb-6">
+                <button onclick="startPvPAI('normal')" class="btn-press bg-slate-800 border-2 border-green-500 text-green-400 p-3 rounded-xl font-bold flex justify-between">
+                    <span>🟢 訓練機器人 (普通)</span> <span class="text-xs text-slate-500 mt-1">作答 12~15秒</span>
+                </button>
+                <button onclick="startPvPAI('hard')" class="btn-press bg-slate-800 border-2 border-yellow-500 text-yellow-400 p-3 rounded-xl font-bold flex justify-between">
+                    <span>🟡 菁英護衛 (困難)</span> <span class="text-xs text-slate-500 mt-1">作答 8~12秒</span>
+                </button>
+                <button onclick="startPvPAI('hell')" class="btn-press bg-slate-800 border-2 border-red-500 text-red-400 p-3 rounded-xl font-bold flex justify-between">
+                    <span>🔴 星際指揮官 (地獄)</span> <span class="text-xs text-slate-500 mt-1">作答 5~8秒</span>
+                </button>
+                <button onclick="startPvPAI('abyss')" class="btn-press bg-slate-900 border-2 border-purple-500 text-purple-400 p-3 rounded-xl font-black flex justify-between shadow-[0_0_10px_purple]">
+                    <span>☠️ AI最終兵器 (深淵)</span> <span class="text-xs text-slate-500 mt-1">極限 3~5秒</span>
+                </button>
+            </div>
+            <button onclick="closePvPAIModal()" class="text-slate-400 underline">返回</button>
+        </div>
+    </div>
+
+    <!-- PvP 匹配等待畫面 -->
+    <div id="modal-pvp-matching" class="fixed inset-0 bg-slate-900/95 z-[115] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-8 rounded-full w-64 h-64 border-indigo-500/50 text-center flex flex-col items-center justify-center relative shadow-[0_0_30px_rgba(99,102,241,0.4)]">
+            <div class="absolute inset-0 border-4 border-t-indigo-400 border-b-blue-400 border-l-transparent border-r-transparent rounded-full animate-spin"></div>
+            <i class="fas fa-radar text-4xl text-indigo-400 mb-2 animate-pulse"></i>
+            <div class="font-bold text-white mb-1">尋找對手...</div>
+            <div id="pvp-match-timer" class="text-3xl font-black text-indigo-300">60</div>
+        </div>
+        <div id="pvp-match-fail-box" class="mt-8 text-center hidden flex-col items-center">
+            <p class="text-rose-400 mb-4 font-bold text-sm">目前星系訊號微弱，<br>找不到戰力相近的對手。</p>
+            <div class="flex gap-2">
+                <button onclick="continueMatchmaking()" class="btn-press bg-slate-800 border border-slate-500 text-white px-3 py-2 rounded-lg font-bold text-xs">繼續等待</button>
+                <button onclick="switchToAIFromMatch()" class="btn-press bg-indigo-600 border border-indigo-400 text-white px-3 py-2 rounded-lg font-bold text-xs shadow-[0_0_10px_indigo]">打電腦</button>
+            </div>
+        </div>
+        <button id="btn-cancel-match" onclick="cancelMatchmaking()" class="mt-8 text-slate-400 underline text-sm">取消並返回</button>
+    </div>
+
+    <!-- 學習晶片庫密碼彈窗 -->
+    <div id="modal-password" class="fixed inset-0 bg-slate-900/95 z-[120] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full text-center shadow-[0_0_30px_rgba(6,182,212,0.2)] border-cyan-500/50">
+            <div class="text-6xl mb-4 text-cyan-400 animate-pulse"><i class="fas fa-lock"></i></div>
+            <h3 class="text-2xl font-black text-cyan-400 mb-2">安全存取驗證</h3>
+            <p class="text-slate-400 text-sm mb-6">請輸入最高權限授權碼以進入晶片庫</p>
+            <input id="input-admin-pwd" type="password" placeholder="輸入授權碼..." class="w-full p-3 rounded-xl bg-slate-800 text-white border-2 border-slate-600 focus:border-cyan-400 outline-none mb-6 text-center font-bold text-xl tracking-[0.3em]">
+            <div class="flex gap-3">
+                <button onclick="closePasswordModal()" class="flex-1 btn-press bg-slate-700 text-white p-3 rounded-xl font-bold">取消</button>
+                <button onclick="verifyPassword()" class="flex-1 btn-press bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-xl font-bold shadow-[0_0_15px_rgba(6,182,212,0.5)]">授權登入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系統警告彈窗 -->
+    <div id="modal-confirm" class="fixed inset-0 bg-slate-900/95 z-[130] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full text-center shadow-[0_0_30px_rgba(239,68,68,0.2)] border-red-500/50">
+            <div class="text-6xl mb-4 text-red-500"><i class="fas fa-exclamation-triangle"></i></div>
+            <h3 class="text-2xl font-black text-red-400 mb-2">系統警告</h3>
+            <p id="confirm-msg" class="text-slate-300 text-sm mb-6">確定要執行此操作？</p>
+            <div class="flex gap-3">
+                <button onclick="closeConfirmModal()" class="flex-1 btn-press bg-slate-700 text-white p-3 rounded-xl font-bold">取消</button>
+                <button id="btn-confirm-action" class="flex-1 btn-press bg-red-600 hover:bg-red-500 text-white p-3 rounded-xl font-bold">確認執行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 重複幻獸補償彈窗 -->
+    <div id="modal-duplicate" class="fixed inset-0 bg-slate-900/95 z-[100] hidden flex-col items-center justify-center p-4 backdrop-blur-md">
+        <div class="sci-fi-panel p-6 rounded-3xl max-w-sm w-full text-center border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+            <div class="text-6xl mb-2 animate-pulse">⚠️</div>
+            <h3 class="text-2xl font-black text-yellow-400 mb-2">檢測到重複幻獸基因！</h3>
+            <p class="text-slate-300 mb-6 text-sm">請選擇您要轉換的補償資源：</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="claimCompensation('meat')" class="btn-press bg-slate-800 border-2 border-red-500 text-red-300 p-3 rounded-xl font-bold flex justify-between items-center">
+                    <span class="flex items-center gap-2"><i class="fas fa-drumstick-bite text-xl"></i> 營養餐</span>
+                    <span class="bg-red-950 px-2 py-1 rounded text-sm">肉塊 x6</span>
+                </button>
+                <button onclick="claimCompensation('mixed')" class="btn-press bg-slate-800 border-2 border-purple-500 text-purple-300 p-3 rounded-xl font-bold flex justify-between items-center">
+                    <span class="flex items-center gap-2"><i class="fas fa-gem text-xl"></i> 突破包</span>
+                    <span class="bg-purple-950 px-2 py-1 rounded text-sm text-left leading-tight">進化石 x1<br>肉塊 x2</span>
+                </button>
+                <button onclick="claimCompensation('shard')" class="btn-press bg-slate-800 border-2 border-pink-500 text-pink-300 p-3 rounded-xl font-bold flex justify-between items-center">
+                    <span class="flex items-center gap-2"><i class="fas fa-puzzle-piece text-xl"></i> 萬能碎片</span>
+                    <span class="bg-pink-950 px-2 py-1 rounded text-sm">碎片 x1</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI 工具 -->
+    <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-cyan-900/90 border border-cyan-400 text-white px-6 py-3 rounded-full font-bold opacity-0 pointer-events-none transition-opacity duration-300 z-[100] shadow-[0_0_15px_cyan] text-center whitespace-nowrap">訊息</div>
+    <div id="confetti-container" class="fixed inset-0 pointer-events-none z-[100] hidden flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+        <div class="text-8xl md:text-9xl mb-4 animate-bounce" id="celebrate-emoji">🎉</div>
+        <h2 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 drop-shadow-[0_0_10px_rgba(253,224,71,0.8)]" id="celebrate-text">任務完成！</h2>
+        <div id="celebrate-reward" class="text-xl md:text-2xl text-white font-bold mt-4 bg-slate-800 px-6 py-2 rounded-full border border-slate-500 text-center"></div>
+    </div>
+
+    <!-- ================= 隕石防禦戰 (單人 PVE) 嚴格不捲動版 ================= -->
+    <main id="screen-meteor" class="screen flex-col items-center w-full flex-1 relative overflow-hidden bg-slate-900">
+        <div class="absolute inset-0 opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9IiNmZmYiLz48L3N2Zz4=')]"></div>
+        
+        <!-- Top HUD (Shrink-0) -->
+        <div class="w-full flex justify-between items-start z-20 p-2 shrink-0 relative">
+            <div class="flex gap-1 text-red-500 text-xl md:text-2xl" id="meteor-hp"></div>
+            <div class="flex flex-col items-end gap-1">
+                <div class="text-yellow-400 font-bold bg-slate-800/80 px-2 md:px-3 py-1 rounded-full border border-yellow-500 shadow-md text-[10px] md:text-sm">
+                    無盡防禦 波數: <span id="meteor-wave">1</span>
+                </div>
+                <button onclick="retreatMeteor()" class="btn-press bg-rose-900/80 text-rose-300 border border-rose-500 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-[0_0_10px_rose]">
+                    <i class="fas fa-sign-out-alt"></i> 撤退
+                </button>
+            </div>
+        </div>
+        
+        <!-- 動態 Play Area (Flex-1) 隕石掉落空間自動撐滿剩餘區塊 -->
+        <div id="meteor-play-area" class="flex-1 w-full relative z-10 border-b border-cyan-900 overflow-hidden">
+            <div id="meteor-container" class="absolute inset-0"></div>
+            
+            <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-20 h-20 md:w-32 md:h-32 z-30 flex justify-center items-end pointer-events-none">
+                <div id="meteor-pet-sprite" class="w-full h-full drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] origin-bottom transition-transform flex items-center justify-center"></div>
+            </div>
+            <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-28 md:w-40 h-2 md:h-4 bg-cyan-900 rounded-full border border-cyan-400 z-20 shadow-[0_0_10px_cyan]"></div>
+        </div>
+        
+        <!-- 底部面板 (Shrink-0) 保證題目顯示 -->
+        <div class="w-full sci-fi-panel z-40 flex flex-col items-center justify-center p-2 shrink-0 relative rounded-t-2xl max-w-2xl mx-auto">
+            <button id="btn-wind-skill-meteor" onclick="useWindSkillMeteor()" class="hidden absolute -top-10 right-2 bg-emerald-600 border border-emerald-300 text-white px-2 py-1 rounded-full text-[10px] font-bold shadow-[0_0_10px_emerald]">🌪️ 吹散干擾 (1次)</button>
+            <div class="text-cyan-400 text-[10px] md:text-sm mb-1 font-bold flex justify-between w-full px-2">
+                <span><i class="fas fa-crosshairs"></i> 目標：</span>
+                <span id="meteor-lesson-badge" class="text-[10px] bg-cyan-900 px-2 rounded"></span>
+            </div>
+            <div id="meteor-question" class="text-white text-sm md:text-lg font-bold text-center leading-tight min-h-[3rem] md:min-h-[4rem] flex items-center justify-center px-2"></div>
+        </div>
+    </main>
+
+    <!-- ================= 巨獸討伐戰 (單人 PVE) 嚴格不捲動版 ================= -->
+    <main id="screen-boss" class="screen flex-col items-center p-1 md:p-2 relative overflow-hidden bg-slate-950">
+        <div class="w-full max-w-lg mx-auto flex flex-col h-full z-10 overflow-hidden">
+            
+            <!-- 頂部資訊 (Shrink-0) -->
+            <div class="flex justify-between w-full px-2 mb-1 shrink-0 pt-1">
+                <div class="text-orange-400 font-bold bg-slate-800/80 px-2 py-0.5 md:py-1 rounded border border-orange-500 text-xs md:text-sm shadow-[0_0_5px_orange]">
+                    連擊: <span id="combo-counter" class="text-sm md:text-xl">0</span>
+                </div>
+                <div class="text-yellow-300 font-bold bg-slate-800/80 px-2 py-0.5 md:py-1 rounded border border-yellow-500 text-xs md:text-sm">
+                    <i class="fas fa-stopwatch"></i> <span id="boss-timer-text">10.0</span>s
+                </div>
+            </div>
+            
+            <div id="boss-name-display" class="text-red-400 font-bold mb-1 text-sm md:text-lg drop-shadow-[0_0_5px_red] text-center shrink-0 leading-tight">🔥 裝甲炎魔龍 🔥</div>
+            <div id="boss-trait-display" class="text-slate-400 text-[10px] md:text-xs mb-1 text-center shrink-0">特性: 極速型</div>
+            
+            <div class="w-4/5 mx-auto h-2.5 md:h-4 bg-slate-900 rounded-full border border-slate-700 overflow-hidden mb-1 relative shrink-0">
+                <div id="boss-hp-bar" class="h-full bg-gradient-to-r from-red-600 to-orange-500 transition-all duration-300" style="width: 100%;"></div>
+                <div class="absolute inset-0 flex items-center justify-center text-[10px] md:text-xs font-bold text-white drop-shadow">HP: <span id="boss-hp-text">300</span></div>
+            </div>
+            
+            <!-- 中間動態戰鬥區 (Flex-1) 圖片自適應縮小 -->
+            <div class="relative flex-1 w-full flex flex-col justify-between items-center min-h-0 my-1 overflow-hidden">
+                <div id="dmg-float-text" class="absolute top-[10%] left-1/2 transform -translate-x-1/2 text-xl md:text-2xl font-black text-yellow-300 pointer-events-none opacity-0 z-50"></div>
+                
+                <!-- Boss Sprite (壓縮圖片高度) -->
+                <div id="boss-sprite" class="w-full flex-1 flex items-center justify-center min-h-0 filter drop-shadow-[0_10px_10px_rgba(220,38,38,0.5)] transition-transform p-2"></div>
+                
+                <!-- 玩家幻獸 -->
+                <div class="w-full flex justify-between items-end px-2 shrink-0">
+                    <div id="battle-pet-sprite" class="w-16 h-16 md:w-24 md:h-24 drop-shadow-[0_5px_15px_rgba(255,255,255,0.4)] z-20 flex items-center justify-center"></div>
+                    <div class="text-cyan-400 font-bold flex flex-col items-end gap-1 mb-1">
+                        <span class="text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded">裝甲防禦</span>
+                        <div id="player-hp" class="flex gap-1 text-cyan-300 text-xs md:text-sm"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部題目與選項 (Shrink-0 固定保留空間) -->
+            <div class="sci-fi-panel rounded-xl p-2 border-red-500/50 relative shrink-0">
+                <button id="btn-wind-skill-boss" onclick="useWindSkillBoss()" class="hidden absolute -top-8 right-2 bg-emerald-600 border border-emerald-300 text-white px-2 py-1 rounded-full text-[10px] font-bold shadow-[0_0_10px_emerald]">🌪️ 刪除錯誤</button>
+                <div class="w-full h-1.5 md:h-2 bg-slate-800 rounded-full mb-1 overflow-hidden">
+                    <div id="boss-timer-bar" class="h-full bg-cyan-400 transition-all duration-100" style="width: 100%;"></div>
+                </div>
+                <div class="text-[10px] text-cyan-500 mb-1 font-bold text-right w-full" id="boss-lesson-badge"></div>
+                <div id="boss-question" class="text-white text-xs md:text-base font-bold mb-2 min-h-[2.5rem] md:min-h-[3rem] leading-snug break-words flex items-center justify-center text-center"></div>
+                <div id="boss-options" class="grid grid-cols-2 gap-1.5 md:gap-2"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ================= 1v1 星際競技場 (戰鬥畫面 PVP) 嚴格不捲動版 ================= -->
+    <main id="screen-pvp" class="screen flex-col items-center p-1 md:p-2 relative overflow-hidden bg-slate-950">
+        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900 via-slate-900 to-black"></div>
+        
+        <div class="w-full max-w-lg mx-auto flex flex-col h-full z-10 overflow-hidden">
+            
+            <div class="flex justify-between w-full px-2 mb-1 shrink-0 pt-1 items-center">
+                <div class="text-cyan-300 font-bold bg-slate-800/80 px-2 py-0.5 rounded-full border border-cyan-700 text-[10px] md:text-sm truncate max-w-[35%] text-center">
+                    <i class="fas fa-user"></i> <span id="pvp-p1-name">我方</span>
+                </div>
+                <div class="text-yellow-300 font-black bg-slate-900 px-3 py-0.5 rounded text-sm md:text-lg border-2 border-indigo-500 shadow-[0_0_10px_indigo]">
+                    <span id="pvp-timer-text">60</span>s
+                </div>
+                <div class="text-rose-400 font-bold bg-slate-800/80 px-2 py-0.5 rounded-full border border-rose-700 text-[10px] md:text-sm truncate max-w-[35%] text-center">
+                    <i class="fas fa-robot"></i> <span id="pvp-p2-name">對手</span>
+                </div>
+            </div>
+            
+            <div class="w-full px-2 mb-1 shrink-0 relative">
+                <div class="w-full h-4 md:h-6 bg-slate-800 rounded-full border-2 border-slate-600 overflow-hidden flex relative">
+                    <div id="pvp-bar-p1" class="h-full bg-gradient-to-r from-cyan-600 to-blue-400 transition-all duration-200" style="width: 50%;"></div>
+                    <div id="pvp-bar-p2" class="h-full bg-gradient-to-l from-rose-600 to-red-400 transition-all duration-200" style="width: 50%;"></div>
+                    <div class="absolute top-0 left-1/2 w-1 h-full bg-white transform -translate-x-1/2 z-10"></div>
+                </div>
+            </div>
+            
+            <!-- 中間動態戰鬥區 -->
+            <div class="relative flex-1 w-full flex min-h-0 my-1 overflow-hidden border-y border-slate-800">
+                <!-- P1 -->
+                <div class="flex-1 flex flex-col items-center justify-end pb-2 relative border-r border-slate-700/50">
+                    <div id="pvp-p1-combo" class="absolute top-1 left-1 text-cyan-300 font-bold text-[10px] md:text-sm bg-slate-800 px-1 rounded opacity-0 transition-opacity">0 連擊</div>
+                    <div id="pvp-p1-shield" class="absolute top-5 md:top-8 left-1 flex gap-0.5 text-emerald-400 text-[10px] md:text-xs"></div>
+                    <div id="pvp-p1-pet" class="w-16 h-16 md:w-28 md:h-28 drop-shadow-[0_0_15px_rgba(6,182,212,0.5)] transition-transform z-20 flex items-center justify-center"></div>
+                    <div id="pvp-p1-effect" class="absolute inset-0 pointer-events-none flex items-center justify-center text-2xl md:text-4xl z-30"></div>
+                </div>
+                <!-- P2 -->
+                <div class="flex-1 flex flex-col items-center justify-start pt-2 relative">
+                    <div id="pvp-p2-combo" class="absolute top-1 right-1 text-rose-400 font-bold text-[10px] md:text-sm bg-slate-800 px-1 rounded opacity-0 transition-opacity">0 連擊</div>
+                    <div id="pvp-p2-shield" class="absolute top-5 md:top-8 right-1 flex gap-0.5 justify-end text-emerald-400 text-[10px] md:text-xs"></div>
+                    <div id="pvp-p2-pet" class="w-16 h-16 md:w-28 md:h-28 drop-shadow-[0_0_15px_rgba(225,29,72,0.5)] transition-transform transform -scale-x-100 z-20 flex items-center justify-center"></div>
+                    <div id="pvp-p2-effect" class="absolute inset-0 pointer-events-none flex items-center justify-center text-2xl md:text-4xl z-30"></div>
+                </div>
+                <div id="pvp-float-text" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xl md:text-2xl font-black pointer-events-none opacity-0 z-50"></div>
+            </div>
+
+            <!-- 底部題目與四個選項區 (高度固定不被擠壓) -->
+            <div id="pvp-control-panel" class="sci-fi-panel rounded-xl p-2 border-indigo-500/50 relative shrink-0 transition-all">
+                <div class="text-[10px] text-indigo-400 mb-1 font-bold text-right w-full" id="pvp-lesson-badge"></div>
+                <div id="pvp-question" class="text-white text-xs md:text-base font-bold mb-2 min-h-[2.5rem] md:min-h-[3rem] leading-snug break-words flex items-center justify-center text-center"></div>
+                <div id="pvp-options" class="grid grid-cols-2 gap-1.5 md:gap-2 relative"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ================= 幻獸培育室 ================= -->
+    <main id="screen-pet" class="screen flex-col items-center p-4 relative overflow-y-auto bg-slate-900">
+        <h2 class="text-2xl font-black text-emerald-400 mb-4 mt-2 shrink-0"><i class="fas fa-paw"></i> 幻獸培育室</h2>
+        <div class="w-full max-w-md sci-fi-panel rounded-3xl p-6 flex flex-col items-center border-emerald-500/50 mb-6 shrink-0">
+            <div class="relative w-full flex justify-between items-center mb-4 px-2">
+                <button onclick="prevPet()" class="btn-press text-slate-400 hover:text-emerald-400 text-3xl z-10"><i class="fas fa-chevron-left"></i></button>
+                <div class="w-32 h-32 md:w-40 md:h-40 bg-slate-800/80 rounded-full border-4 border-slate-600 flex items-center justify-center relative shadow-[0_0_30px_rgba(16,185,129,0.2)] inset">
+                    <div id="pet-sprite" class="w-full h-full flex items-center justify-center animate-bounce p-2"></div>
+                    <div id="pet-level-badge" class="absolute -bottom-2 bg-emerald-600 text-white font-bold px-3 py-1 rounded-full border-2 border-emerald-300 text-[10px] md:text-sm z-10 whitespace-nowrap">Lv. 1</div>
+                </div>
+                <button onclick="nextPet()" class="btn-press text-slate-400 hover:text-emerald-400 text-3xl z-10"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            
+            <h3 id="pet-name" class="text-2xl font-bold text-white mb-1">未解鎖</h3>
+            <p id="pet-desc" class="text-slate-400 text-xs md:text-sm mb-2 text-center min-h-[40px]">...</p>
+            
+            <div id="pet-stone-req" class="text-purple-400 font-bold text-xs md:text-sm text-center mb-2 hidden"></div>
+
+            <div class="w-full mb-4">
+                <div class="flex justify-between text-[10px] md:text-xs font-bold text-emerald-300 mb-1">
+                    <span>EXP</span><span id="pet-exp-text">0 / 1</span>
+                </div>
+                <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
+                    <div id="pet-exp-bar" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 transition-all duration-300" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 w-full">
+                <button onclick="feedPet()" class="btn-press bg-red-900/60 border-2 border-red-500 text-red-100 font-bold py-2 md:py-3 rounded-xl flex flex-col items-center justify-center gap-1">
+                    <i class="fas fa-drumstick-bite text-lg md:text-xl"></i><span class="text-xs md:text-sm">餵食 1 塊</span>
+                </button>
+                <button onclick="feedPetMax()" class="btn-press bg-orange-900/60 border-2 border-orange-500 text-orange-100 font-bold py-2 md:py-3 rounded-xl flex flex-col items-center justify-center gap-1">
+                    <i class="fas fa-forward text-lg md:text-xl"></i><span class="text-xs md:text-sm">一鍵升級</span>
+                </button>
+            </div>
+        </div>
+        <button onclick="goHome()" class="btn-press w-full max-w-md bg-slate-800 text-white font-bold py-3 rounded-xl border border-slate-600 shrink-0">返回基地</button>
+    </main>
+
+    <!-- ================= 星空召喚陣 (抽卡) ================= -->
+    <main id="screen-gacha" class="screen flex-col items-center justify-center p-4 relative overflow-y-auto bg-slate-900">
+        <h2 class="text-3xl font-black text-pink-300 mb-8 tracking-widest drop-shadow-[0_0_10px_purple]"><i class="fas fa-dharmachakra"></i> 星空召喚</h2>
+        <div id="gacha-circle" class="w-48 h-48 md:w-64 md:h-64 rounded-full border-4 border-dashed border-purple-500/50 flex items-center justify-center relative mb-10 shrink-0">
+            <div class="absolute inset-0 rounded-full border-4 border-pink-500/30 animate-[spin_10s_linear_infinite]"></div>
+            <i class="fas fa-star-of-david text-5xl md:text-6xl text-purple-600 opacity-50"></i>
+            <div id="gacha-result" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 rounded-full z-20 scale-0 transition-transform duration-500">
+                <div id="gacha-result-icon" class="mb-2 flex items-center justify-center w-16 h-16 md:w-20 md:h-20"></div>
+                <div id="gacha-result-text" class="text-white font-bold text-center text-sm md:text-base px-2">獲得...</div>
+            </div>
+        </div>
+        <div class="text-yellow-400 font-bold mb-4 bg-slate-800 px-4 py-2 rounded-full border border-yellow-500/50 text-sm md:text-base shrink-0">
+            持有星塵幣: <span id="gacha-stardust-display">0</span>
+        </div>
+        <button onclick="drawGacha()" class="btn-press w-full max-w-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white text-lg md:text-xl font-bold py-3 md:py-4 rounded-full shadow-[0_0_20px_rgba(219,39,119,0.5)] border-b-4 border-purple-800 mb-6 shrink-0">
+            啟動召喚 (消耗 100 星塵)
+        </button>
+        <button onclick="goHome()" class="text-slate-400 font-bold underline shrink-0">返回基地</button>
+    </main>
+
+    <!-- ================= 全班榮譽榜 ================= -->
+    <main id="screen-leaderboard" class="screen flex-col items-center p-4 relative overflow-y-auto bg-slate-900">
+        <h2 class="text-2xl font-black text-purple-400 mb-4 mt-2 shrink-0"><i class="fas fa-trophy"></i> 雲端榮譽榜</h2>
+        <div class="flex gap-2 mb-4 w-full max-w-md overflow-x-auto pb-2 shrink-0 snap-x">
+            <button onclick="switchBoard('wealth')" id="tab-wealth" class="px-4 py-2 bg-purple-700 text-white rounded-full text-xs md:text-sm font-bold shrink-0 shadow-[0_0_10px_purple] snap-center">宇宙富豪榜</button>
+            <button onclick="switchBoard('speed')" id="tab-speed" class="px-4 py-2 bg-slate-800 text-slate-400 rounded-full text-xs md:text-sm font-bold border border-slate-600 shrink-0 snap-center">弒神英雄榜</button>
+            <button onclick="switchBoard('defense')" id="tab-defense" class="px-4 py-2 bg-slate-800 text-slate-400 rounded-full text-xs md:text-sm font-bold border border-slate-600 shrink-0 snap-center">最強防禦榜</button>
+            <button onclick="switchBoard('scholar')" id="tab-scholar" class="px-4 py-2 bg-slate-800 text-slate-400 rounded-full text-xs md:text-sm font-bold border border-slate-600 shrink-0 snap-center">學霸榮譽榜</button>
+            <button onclick="switchBoard('pkwin')" id="tab-pkwin" class="px-4 py-2 bg-slate-800 text-slate-400 rounded-full text-xs md:text-sm font-bold border border-slate-600 shrink-0 snap-center">PK勝率榜</button>
+            <button onclick="switchBoard('aispeed')" id="tab-aispeed" class="px-4 py-2 bg-slate-800 text-slate-400 rounded-full text-xs md:text-sm font-bold border border-slate-600 shrink-0 snap-center">AI速通榜</button>
+        </div>
+        <div id="boss-leaderboard-filter" class="w-full max-w-md mb-2 hidden relative shrink-0">
+            <select id="leaderboard-boss-select" onchange="renderLeaderboard()" class="w-full bg-slate-800 text-cyan-300 py-2 px-4 rounded-xl border border-slate-600 focus:border-cyan-400 outline-none font-bold text-center appearance-none cursor-pointer text-sm">
+            </select>
+            <i class="fas fa-chevron-down absolute right-4 top-1/2 transform -translate-y-1/2 text-cyan-500 pointer-events-none"></i>
+        </div>
+        <div class="w-full max-w-md sci-fi-panel rounded-xl p-2 flex-1 overflow-y-auto relative border-purple-500/50">
+            <div id="leaderboard-list" class="flex flex-col gap-2">
+                <div class="text-center text-slate-400 mt-10"><i class="fas fa-spinner fa-spin text-3xl mb-2"></i><br>讀取星際數據中...</div>
+            </div>
+        </div>
+        <button onclick="goHome()" class="mt-4 w-full max-w-md btn-press bg-slate-700 text-white font-bold py-3 rounded-xl shrink-0">返回基地</button>
+    </main>
+
+    <!-- ================= 錯題本與晶片庫 ================= -->
+    <main id="screen-mistakes" class="screen flex-col items-center p-4 relative overflow-y-auto bg-slate-900">
+        <h2 class="text-2xl font-black text-rose-400 mb-2 mt-2 shrink-0"><i class="fas fa-book-dead"></i> 戰損紀錄分析</h2>
+        <div id="mistake-list" class="w-full max-w-md flex flex-col gap-3 mb-6 flex-1 overflow-y-auto"></div>
+        <button onclick="goHome()" class="w-full max-w-md btn-press bg-slate-700 text-white font-bold py-3 rounded-xl shrink-0">返回基地</button>
+    </main>
+    <main id="screen-manage" class="screen flex-col items-center p-4 relative overflow-y-auto bg-slate-900">
+        <h2 class="text-xl md:text-2xl font-black text-cyan-400 mb-4 mt-2 shrink-0"><i class="fas fa-database"></i> 學習晶片庫 (最高權限)</h2>
+        <div class="w-full max-w-md sci-fi-panel p-3 md:p-4 rounded-xl mb-4 shrink-0">
+            <input id="input-idiom" type="text" placeholder="成語" class="w-full mb-2 p-2 bg-slate-800 text-white rounded border border-slate-600 text-sm">
+            <input id="input-meaning" type="text" placeholder="解釋" class="w-full mb-2 p-2 bg-slate-800 text-white rounded border border-slate-600 text-sm">
+            <textarea id="input-sentence" rows="2" placeholder="例句 (請包含＿＿＿＿)" class="w-full mb-2 p-2 bg-slate-800 text-white rounded border border-slate-600 text-sm"></textarea>
+            <button onclick="addNewIdiom()" class="w-full btn-press bg-cyan-700 text-white font-bold py-2 rounded text-sm">寫入晶片</button>
+        </div>
+        <div class="w-full max-w-md flex-1 sci-fi-panel rounded-xl flex flex-col overflow-hidden min-h-[150px]">
+            <div class="bg-slate-800 p-2 font-bold text-cyan-300 flex justify-between shrink-0">
+                <span class="text-sm">總量: <span id="total-idioms-count">0</span></span>
+                <button onclick="resetDefaultIdioms()" class="text-xs bg-red-900/50 text-red-300 px-2 rounded hover:bg-red-500 hover:text-white transition">重置系統</button>
+            </div>
+            <div id="all-idioms-list" class="flex-1 overflow-y-auto p-2"></div>
+        </div>
+        <button onclick="goHome()" class="mt-4 w-full max-w-md btn-press bg-slate-700 text-white font-bold py-3 rounded-xl shrink-0">安全登出並返回基地</button>
+    </main>
+
+    <!-- ================= 遊戲核心腳本 ================= -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+        // Firebase 設置
+        const firebaseConfig = {
+          apiKey: "AIzaSyAMW-wgbe586brt9KNZEGeW_BExISBNFTo",
+          authDomain: "starpetedu.firebaseapp.com",
+          projectId: "starpetedu",
+          storageBucket: "starpetedu.firebasestorage.app",
+          messagingSenderId: "394524425412",
+          appId: "1:394524425412:web:dcfa8dea48188f5025dd91"
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let inventory = {
+            stardust: 0, meat: 0, stones: 0,
+            unlockedPets: [], universalShards: 0, petsData: {},
+            totalAnswered: 0, correctAnswers: 0, maxMeteorWaves: 0, fastestBossTime: 999,
+            bossRecords: {}, customName: "",
+            pkWins: 0, pkTotal: 0, aiRecords: { normal: 999, hard: 999, hell: 999, abyss: 999 }
+        };
+        let allUsersData = [];
+
+        function getPetStage(level) {
+            if (!level) return 0;
+            if (level >= 20) return 2;
+            if (level >= 10) return 1;
+            return 0;
+        }
+
+        /* ================= 題庫數據 ================= */
+        const defaultIdioms = [
+            { idiom: "家喻戶曉", meaning: "家家戶戶都知曉，形容事情、名聲傳播極廣。", lesson: "L7", sentences: ["她是＿＿＿＿的大明星，因此一舉一動都格外引人注目。","《西遊記》的故事在華人世界裡幾乎＿＿＿＿，老少皆知。","這家老字號的包子店在當地＿＿＿＿，每天都大排長龍。","經過新聞的大肆報導，這件奇聞異事早已＿＿＿＿了。","這首流行歌曲的旋律非常洗腦，沒多久就＿＿＿＿了。"]},
+            { idiom: "觸類旁通", meaning: "表示對已知事物的認識與理解，進而通達對其他類似事物的認知。", lesson: "L7", sentences: ["他才思敏捷，往往能舉一反三，＿＿＿＿。","學習數學只要掌握核心觀念，就能＿＿＿＿，解開各種題型。","老師希望我們不要死背書，而是要學會＿＿＿＿，靈活運用知識。","有了鋼琴的基礎，他學起其他鍵盤樂器便能＿＿＿＿，進步神速。","廣泛閱讀課外讀物可以幫助我們＿＿＿＿，提升對各種知識的理解力。"]},
+            { idiom: "一蹶不振", meaning: "比喻一遭受挫敗，就再也不能振作起來。", lesson: "L7", sentences: ["我們要有愈挫愈勇的精神，千萬不可＿＿＿＿。","那次投資失敗後，他便＿＿＿＿，整天意志消沉。","經歷了這場大病，原本活潑開朗的她似乎＿＿＿＿了。","面對比賽的落敗，教練鼓勵大家吸取教訓，不要因此＿＿＿＿。","這家公司在金融風暴中遭受重創，從此＿＿＿＿，最終宣告破產。"]},
+            { idiom: "易如反掌", meaning: "比喻事情非常容易做到。", lesson: "L7", sentences: ["對大胃王而言，吃五碗飯，簡直是＿＿＿＿。","這道數學題對班長來說＿＿＿＿，他不到一分鐘就解出來了。","只要平時準備充分，想要通過這次的檢定考試絕對＿＿＿＿。","以他的實力，要在這場百米賽跑中奪冠，簡直是＿＿＿＿。","現代科技發達，想在網路上搜尋國外的資料可說是＿＿＿＿。"]},
+            { idiom: "樂不可支", meaning: "形容快樂到了極點。", lesson: "L7", sentences: ["老師宣布今天小考取消，全班同學都＿＿＿＿！","聽到自己中了頭獎的消息，他高興得＿＿＿＿。","孩子們收到期待已久的聖誕禮物，個個都＿＿＿＿。","看到心愛的偶像向自己揮手，小粉絲激動得＿＿＿＿。","終於熬到了暑假，大家拋開沉重的書包，＿＿＿＿地計畫著出遊。"]},
+            { idiom: "旗開得勝", meaning: "比喻事情才一開始就獲得成功。", lesson: "L7", sentences: ["我隊＿＿＿＿，觀眾們都紛紛起立為球員鼓掌。","校長在運動會開幕時，預祝各班的選手都能＿＿＿＿。","憑藉著完美的團隊默契，我們在首場比賽就＿＿＿＿。","這次出國比賽，希望能＿＿＿＿，為國爭光。","只要大家齊心協力，我們一定能在這次的專案中＿＿＿＿。"]},
+            { idiom: "不得要領", meaning: "指無法掌握事情的要點或主旨。", lesson: "L8", sentences: ["這篇論文的邏輯混亂，使人讀後＿＿＿＿。","他解釋了半天，大家還是聽得＿＿＿＿，完全不知道重點在哪。","因為缺乏經驗，他處理這件事顯得＿＿＿＿，頻頻出錯。","這本說明書寫得太過艱澀，讓新手看了＿＿＿＿。","如果沒有正確的方法，盲目練習只會讓人＿＿＿＿，事倍功半。"]},
+            { idiom: "每下愈況", meaning: "比喻情況愈來愈壞。", lesson: "L8", sentences: ["這家公司的營運狀況，已經＿＿＿＿。","由於長期熬夜，他的身體健康＿＿＿＿，經常生病。","因為缺乏維護，這座古蹟的損壞程度＿＿＿＿。","他的成績＿＿＿＿，讓父母感到非常擔憂。","這條河川的汙染問題＿＿＿＿，必須立刻採取改善措施。"]},
+            { idiom: "怒髮衝冠", meaning: "形容盛怒的樣子。", lesson: "L8", sentences: ["他遭受到如此誣賴，難怪會＿＿＿＿，大聲辯解。","看到歹徒欺負弱小，他氣得＿＿＿＿，立刻上前制止。","得知自己辛苦完成的作品被抄襲，她當場＿＿＿＿。","岳飛＿＿＿＿，寫下了流傳千古的〈滿江紅〉。","面對敵人的惡意挑釁，將軍＿＿＿＿地發動了攻擊。"]},
+            { idiom: "過猶不及", meaning: "做事過分就跟做得不夠一樣，都是不好的。比喻做事要恰到好處。", lesson: "L8", sentences: ["待人處事要圓融，講求中庸之道，＿＿＿＿對於事情都毫無幫助。","運動雖然有益健康，但＿＿＿＿，過度運動反而會造成運動傷害。","管教孩子必須拿捏分寸，嚴厲或溺愛都是＿＿＿＿。","煮這道菜時，調味料放太多或太少都不好，這正是＿＿＿＿的道理。","在追求完美的過程中，我們也要懂得適可而止，因為＿＿＿＿。"]},
+            { idiom: "肝膽相照", meaning: "比喻朋友之間赤誠相處，真心相待。", lesson: "L8", sentences: ["他們是幾十年的老戰友了，＿＿＿＿，生死與共。","真正的朋友應該＿＿＿＿，在困難時互相扶持。","這兩位義氣相挺的兄弟，始終＿＿＿＿，從未背棄過對方。","在職場上能遇到＿＿＿＿的好同事，是非常幸運的事。","為了共同的理想，這群年輕人＿＿＿＿，決定一起創業。"]},
+            { idiom: "軟硬兼施", meaning: "委婉和強硬的手段一齊用上。", lesson: "L8", sentences: ["這次會議我方代表＿＿＿＿，終於使對方讓步而達成協議。","面對這個固執的客戶，業務員＿＿＿＿，總算說服了他。","媽媽對不愛吃蔬菜的弟弟＿＿＿＿，最後他只好乖乖吃下去。","警方＿＿＿＿，終於突破了犯人的心防，讓他供出實情。","為了讓他戒除壞習慣，家人＿＿＿＿，用盡了各種方法。"]},
+            { idiom: "盛氣凌人", meaning: "指用傲慢的氣勢壓迫別人。", lesson: "L9", sentences: ["我看他是得理不饒人，才會如此＿＿＿＿的責罵對方。","那位經理平時總是＿＿＿＿，因此部門內的員工都不太喜歡他。","雖然他家境富裕，但待人親切，從不曾有＿＿＿＿的態度。","辯論會上，反方代表＿＿＿＿，試圖在氣勢上壓倒對手。","別看他現在＿＿＿＿，遇到真正的高手時，他就不敢吭聲了。"]},
+            { idiom: "雀屏中選", meaning: "比喻在眾多競爭者中被選上。", lesson: "L9", sentences: ["為了科展，同學們不眠不休，參加的作品終於＿＿＿＿，得到第一名。","在眾多面試者中，她憑藉著流利的外語能力＿＿＿＿。","這部電影的劇本非常出色，難怪能在眾多參賽作品中＿＿＿＿。","經過層層選拔，他終於＿＿＿＿，成為這次活動的代言人。","他的設計理念新穎獨特，最後果然＿＿＿＿，被公司採用。"]},
+            { idiom: "老馬識途", meaning: "比喻有經驗的人對情況比較熟悉，容易把工作做好。", lesson: "L9", sentences: ["他為大家找到正確的路，真不愧是＿＿＿＿。","在登山迷路時，多虧了這位＿＿＿＿的嚮導，我們才得以安全下山。","處理這種棘手的客訴案件，還是交給＿＿＿＿的資深前輩比較妥當。","憑著＿＿＿＿的經驗，老船長成功帶領大家避開了可怕的暗礁。","他在這個行業打滾多年，有如＿＿＿＿，總能迅速解決問題。"]},
+            { idiom: "熟能生巧", meaning: "熟練了自然能領悟出竅門。", lesson: "L9", sentences: ["所謂「＿＿＿＿」，只要你肯勤加練習，對於這部機器就能操作自如了。","一開始學騎腳踏車總是會摔倒，但只要多練習，自然就會＿＿＿＿。","包水餃看似簡單，其實需要長時間的練習才能＿＿＿＿，包得漂亮。","他精湛的刀工並非天生，而是每天在廚房苦練，＿＿＿＿的結果。","學外語沒有捷徑，多聽多說多讀多寫，久而久之自然＿＿＿＿。"]},
+            { idiom: "力透紙背", meaning: "形容人的書法遒勁有力，或文章深刻。", lesson: "L9", sentences: ["老先生的題字筆力蒼勁，真可謂＿＿＿＿。","這篇文章批判社會現象深刻入微，字字句句皆＿＿＿＿。","這位書法大師的作品＿＿＿＿，展現出深厚的功力。","讀了他那篇＿＿＿＿的評論，讓大家對這件事有了全新的看法。","他不僅寫得一手好字，＿＿＿＿，文學造詣也非常高。"]},
+            { idiom: "捕風捉影", meaning: "比喻所做的事或說的話毫無根據，憑空揣測。", lesson: "L9", sentences: ["那些傳聞只不過是＿＿＿＿，不必理會。","媒體報導應該講求證據，不能靠著＿＿＿＿就亂寫一通。","他生性多疑，經常對同事的無心之言＿＿＿＿，造成很多誤會。","法官辦案講究證據確鑿，絕不允許任何＿＿＿＿的推論。","對於網路上＿＿＿＿的假消息，我們應該保持理智，不要輕易相信。"]},
+            { idiom: "氣焰熏天", meaning: "形容人的氣勢極其囂張，傲慢逼人。", lesson: "L10", sentences: ["他總是＿＿＿＿，相當強勢，使朋友一個一個離他而去。","那個惡霸在村裡＿＿＿＿，欺壓百姓，大家對他敢怒不敢言。","敵軍雖然看似＿＿＿＿，但其實內部早已軍心渙散。","仗著有大老闆撐腰，那位主管在公司裡簡直是＿＿＿＿。","昔日＿＿＿＿的龐大帝國，最終也難逃走向衰亡的命運。"]},
+            { idiom: "獨當一面", meaning: "獨力擔當某一方面的重任。", lesson: "L10", sentences: ["經過多年的磨練，他已經可以＿＿＿＿了。","老闆很賞識他的才華，決定派他去新分公司＿＿＿＿。","在現代社會，培養孩子＿＿＿＿的能力是非常重要的。","她雖然年紀輕輕，但做事穩重，已經是能＿＿＿＿的專案經理了。","這支球隊的每個球員都具備了＿＿＿＿的實力，難怪會拿下冠軍。"]},
+            { idiom: "菩薩心腸", meaning: "比喻慈悲之心。", lesson: "L10", sentences: ["他不計較以前的衝突，以德報怨，實在是＿＿＿＿。","那位老奶奶常常煮熱湯給街友吃，真是一副＿＿＿＿。","醫生看到病患痛苦的樣子，不禁動了＿＿＿＿，決定免費為他治療。","即使流浪狗咬傷了他，他還是滿懷＿＿＿＿地將牠送去獸醫院。","志工們帶著＿＿＿＿，默默地在偏鄉為弱勢孩童課輔。"]},
+            { idiom: "漠不關心", meaning: "形容對人或事物冷淡，一點也不關心。", lesson: "L10", sentences: ["對民生需求，有為的執政者不能＿＿＿＿。","他整天只顧著打電動，對家裡發生的大小事都＿＿＿＿。","我們生存在同一個地球上，對於環保議題絕對不能＿＿＿＿。","面對同學被霸凌，我們不該袖手旁觀、＿＿＿＿。","他看起來對什麼事都＿＿＿＿，其實內心非常敏感脆弱。"]},
+            { idiom: "有容乃大", meaning: "有度量，能寬容，才能夠成就大業。", lesson: "L10", sentences: ["凡事＿＿＿＿，不要再斤斤計較了。","「海納百川，＿＿＿＿」，這句名言勉勵我們要具備寬闊的胸襟。","真正的領導者懂得接納不同的意見，因為他們明白＿＿＿＿的道理。","面對別人的批評，他總是虛心接受，展現出＿＿＿＿的風度。","多元文化的融合讓這座城市更加繁榮，這正是＿＿＿＿的最佳寫照。"]},
+            { idiom: "吳下阿蒙", meaning: "原指三國名將呂蒙。後用來比喻學識淺陋、沒有進步的人。", lesson: "L11", sentences: ["他如今已是世界聞名的音樂家，不是昔日的＿＿＿＿。","經過這幾年的出國深造，他的專業能力早已非＿＿＿＿可比。","士別三日，即更刮目相待，你可不能再把他當成＿＿＿＿了。","只要肯努力學習，沒有人會永遠是＿＿＿＿。","他發憤圖強，博覽群書，終於擺脫了＿＿＿＿的稱號。"]},
+            { idiom: "骨瘦如柴", meaning: "形容人非常消瘦，像木柴一樣。", lesson: "L11", sentences: ["這場大病把叔叔折磨得＿＿＿＿，令人心痛。","那些難民因為長期飢荒，個個都＿＿＿＿，看了真不忍心。","她為了追求極致的苗條而過度節食，結果變得＿＿＿＿，反而失去了健康。","收容所裡的流浪貓剛被發現時＿＿＿＿，經過照顧現在已經圓潤許多。","長期的勞累與營養不良，讓這位母親的身影顯得＿＿＿＿。"]},
+            { idiom: "趨炎附勢", meaning: "指奉承依附有權勢的人。", lesson: "L11", sentences: ["＿＿＿＿或許能換得名與利，但也可能失去情誼。","他生性清高，最看不慣那些在長官面前＿＿＿＿的小人。","歷史上許多＿＿＿＿之徒，在靠山倒臺後，下場通常都很淒慘。","那個人總是＿＿＿＿，看到有錢人就巴結，看到窮人就擺臉色。","我們應該結交正直的朋友，而不是那些＿＿＿＿、見風轉舵的人。"]},
+            { idiom: "居安思危", meaning: "處於安樂時，要想到危險可能隨時會出現。", lesson: "L11", sentences: ["平時就應＿＿＿＿，及早做好防災準備。","雖然目前公司業績很好，但老闆總是提醒大家要＿＿＿＿，不可懈怠。","歷史的教訓告訴我們，國家在繁榮時期更應該＿＿＿＿，鞏固國防。","存緊急預備金就是一種＿＿＿＿的理財觀念。","人生難免有起伏，我們在順境時要懂得＿＿＿＿，才能應付突如其來的變化。"]},
+            { idiom: "義正辭嚴", meaning: "理由正當，措詞嚴厲。", lesson: "L11", sentences: ["他提出的不合理要求，你大可＿＿＿＿的拒絕。","面對不實的指控，他＿＿＿＿地為自己辯護，贏得了大家的信任。","法官＿＿＿＿地宣判了罪犯的刑期，彰顯了司法正義。","校長＿＿＿＿地告誡學生，絕對不可參與任何違法活動。","這篇社論＿＿＿＿地批評了官商勾結的黑暗面，引起廣大迴響。"]},
+            { idiom: "妄自菲薄", meaning: "隨意看輕自己，不知自重。", lesson: "L11", sentences: ["在這世界上，每個人都有優點，不宜＿＿＿＿。","就算這次考不好，也不應該＿＿＿＿，只要找出原因下次就能進步。","天生我材必有用，千萬不要因為一時的挫折就＿＿＿＿。","老師經常鼓勵缺乏自信的同學，要相信自己，不要＿＿＿＿。","如果連你自己都＿＿＿＿，那要怎麼說服別人相信你的能力呢？"]},
+            { idiom: "扶老攜幼", meaning: "扶著老人，牽著小孩。指男女老幼全體出動的情況。", lesson: "L12", sentences: ["每到陽明山花季，總有大批遊客＿＿＿＿，上山賞花。","元宵節當晚，鎮上的居民＿＿＿＿，熱鬧地在大街上提燈籠。","聽說有免費的戶外電影放映，村民們便＿＿＿＿地前往廣場占位子。","廟會的踩街活動吸引了無數鄉親＿＿＿＿，前來共襄盛舉。","一聽到地震警報，住戶們立刻＿＿＿＿，迅速疏散到空曠處避難。"]},
+            { idiom: "任勞任怨", meaning: "形容人做事熱心負責，不辭勞苦，不怕嫌怨。", lesson: "L12", sentences: ["里長一直以來都＿＿＿＿的為大家服務，贏得里民對他的尊重。","母親為了撫養我們長大，大半輩子都在工廠裡＿＿＿＿地工作。","他對公司交辦的任務總是＿＿＿＿，從不抱怨加班辛苦。","清潔隊員每天＿＿＿＿地打掃街道，給了我們一個乾淨的環境。","這種吃力不討好的工作，只有像他這樣＿＿＿＿的人才肯接下。"]},
+            { idiom: "任重道遠", meaning: "負擔繁重，路途遙遠。比喻長期肩負重大的任務。", lesson: "L12", sentences: ["這是一件＿＿＿＿的工作，希望大家都能堅持到最後。","推動環保教育是一項＿＿＿＿的使命，需要我們長期持續努力。","肩負著振興傳統藝術的責任，他深知自己＿＿＿＿。","改革教育體制＿＿＿＿，並非一朝一夕就能看到成果。","總統在就職演說中表示，未來的施政將＿＿＿＿，必定全力以赴。"]},
+            { idiom: "當務之急", meaning: "當前最急迫要做的事。", lesson: "L12", sentences: ["為了能在比賽中衛冕成功，＿＿＿＿是加強選手信心。","颱風過後，重建災區的基礎設施成了政府的＿＿＿＿。","公司正面臨嚴重的資金缺口，尋找新的投資人是目前的＿＿＿＿。","考期逼近，放下手機專心溫習功課，才是你的＿＿＿＿。","面對日益嚴重的全球暖化，減少碳排放已經成為全人類的＿＿＿＿。"]},
+            { idiom: "不同凡響", meaning: "原指不平凡的音樂。後用來比喻特出、不平凡的人或事物。", lesson: "L12", sentences: ["這首曲子的優美和弦，襯托出他們＿＿＿＿的完美和聲。","這位年輕畫家的作品風格獨特，果然＿＿＿＿，一展出就受到矚目。","這道結合了中西風味的創意料理，吃起來口感層次豐富，真的是＿＿＿＿。","她一開口唱歌，那清亮高亢的嗓音立刻讓人感覺＿＿＿＿。","這部科幻小說的世界觀設定得非常宏大且＿＿＿＿，讀起來十分過癮。"]}
+        ];
+
+        window.idiomData = JSON.parse(localStorage.getItem('idiom_data_v12')) || [...defaultIdioms];
+        window.mistakesList = JSON.parse(localStorage.getItem('idiom_mistakes_v12')) || [];
+        
+        window.currentQuestionPool = [...window.idiomData]; 
+        window.availableSentencesMap = {}; 
+        window.currentTrainingRange = 'all'; 
+
+        /* ================= 幻獸與巨獸圖鑑 (內嵌外部圖片) ================= */
+        const PET_DEX = {
+            1: { 
+                stageNames: ["小火蜥", "烈焰龍族", "恆星爆炎龍"],
+                images: [
+                    "https://i.postimg.cc/dDH16LBN/13-xiao-huo-xi.png",
+                    "https://i.postimg.cc/kDXGWxQr/14-lie-yan-long-zu.png",
+                    "https://i.postimg.cc/23c6GVGC/15-heng-xing-bao-yan-long.png"
+                ],
+                color: "text-red-400", skillName: "精準火力", skillDesc: "減少隕石戰的干擾選項。",
+                pvpSkillName: "烈焰焦黑",
+                pvpSkillDesc: "[Lv.10] 5連擊: 燒黑對手 1 個選項(3秒)\n[Lv.20] 3連擊: 燒黑對手 2 個選項"
+            },
+            2: { 
+                stageNames: ["電氣幼狼", "迅雷狼族", "脈衝星雷狼"],
+                images: [
+                    "https://i.postimg.cc/qgbRwzwM/16-dian-qi-you-lang.png",
+                    "https://i.postimg.cc/cKB1nH6Z/17-xun-lei-lang-zu.png",
+                    "https://i.postimg.cc/bDYyHh2f/18-mai-chong-xing-lei-lang.png"
+                ],
+                color: "text-yellow-400", skillName: "時空力場", skillDesc: "延長所有模式的思考/掉落時間。",
+                pvpSkillName: "雷電防禦",
+                pvpSkillDesc: "[Lv.10] 被推退幅度減少 15%\n[Lv.20] 減免 30% + 對手答錯時閃屏"
+            },
+            3: { 
+                stageNames: ["齒輪小龜", "大地機甲", "泰坦行星堡壘"],
+                images: [
+                    "https://i.postimg.cc/phVWYHnH/19-chi-lun-xiao-gui.png",
+                    "https://i.postimg.cc/jwqxQbJj/20-da-de-ji-jia.png",
+                    "https://i.postimg.cc/GTHbVxKr/21-tai-tan-xing-xing-bao-lei.png"
+                ],
+                color: "text-emerald-400", skillName: "資源探測", skillDesc: "過關掉落資源增加 20%。",
+                pvpSkillName: "大地護盾",
+                pvpSkillDesc: "[Lv.10] 擋1次干擾 (答對5題重生)\n[Lv.20] 上限2次 (答對3題重生) + 破盾震動"
+            },
+            4: { 
+                stageNames: ["急凍水母", "冰霜精靈", "絕對零度使"],
+                images: [
+                    "https://i.postimg.cc/py6W83Vr/22-ji-dong-shui-mu.png",
+                    "https://i.postimg.cc/QHKXqSVK/23-bing-shuang-jing-ling.png",
+                    "https://i.postimg.cc/pp52Bkyr/24-jue-dui-ling-du-shi.png"
+                ],
+                color: "text-blue-300", skillName: "絕對零度", skillDesc: "答錯時 30% 機率不扣血且不斷 Combo。",
+                pvpSkillName: "絕對冰結",
+                pvpSkillDesc: "[Lv.10] 4連擊: 凍結對手畫面 1.5秒\n[Lv.20] 3連擊: 凍結對手 2秒"
+            },
+            5: { 
+                stageNames: ["星塵幼鷹", "疾風羽族", "太陽風暴鷲"],
+                images: [
+                    "https://i.postimg.cc/18xy76q3/25-xing-chen-you-ying.png",
+                    "https://i.postimg.cc/9RNhdqhT/26-ji-feng-yu-zu.png",
+                    "https://i.postimg.cc/bDFhx2hk/27-tai-yang-feng-bao-jiu.png"
+                ],
+                color: "text-teal-300", skillName: "洞察之風", skillDesc: "戰鬥中可主動發動1次，刪除2個錯誤選項。",
+                pvpSkillName: "疾風洗牌",
+                pvpSkillDesc: "[Lv.10] 4連擊: 對手選項瞬間大風吹\n[Lv.20] 2連擊: 選項瞬間大風吹"
+            },
+            6: { 
+                stageNames: ["暗物質史萊姆", "虛空魔靈", "黑洞吞噬者"],
+                images: [
+                    "https://i.postimg.cc/qh7r6x9Q/28-an-wu-zhi-shi-lai-mu.png",
+                    "https://i.postimg.cc/xJF2vb2G/29-xu-kong-mo-ling.png",
+                    "https://i.postimg.cc/tnZH2CR1/30-hei-dong-tun-shi-zhe.png"
+                ],
+                color: "text-purple-500", skillName: "暴擊吞噬", skillDesc: "快答暴擊傷害變為 2.5 倍，但裝甲只有 1 格。",
+                pvpSkillName: "虛空吞噬",
+                pvpSkillDesc: "[Lv.10] 推力與受擊皆變為 1.5倍\n[Lv.20] 推力 2倍 + 5連擊吸走對手分數"
+            }
+        };
+
+        const BOSS_DATA = [
+            { id: 1, name: "狂武星骸・白羊", image: "https://i.postimg.cc/V5DSh7fY/01-kuang-wu-xing-hai-bai-yang.png", type: "極速型", hpMultiplier: 0.6, timeLimit: 10 },
+            { id: 2, name: "重力星骸・金牛", image: "https://i.postimg.cc/8stFYypg/02-zhong-li-xing-hai-jin-niu.png", type: "血牛型", hpMultiplier: 2.5, timeLimit: 15 },
+            { id: 3, name: "幻影星骸・雙子", image: "https://i.postimg.cc/mh8cndLx/03-huan-ying-xing-hai-shuang-zi.png", type: "干擾型", hpMultiplier: 1.0, timeLimit: 15 },
+            { id: 4, name: "深淵星骸・巨蟹", image: "https://i.postimg.cc/F1Df6Prh/04-shen-yuan-xing-hai-ju-xie.png", type: "裝甲型", hpMultiplier: 1.2, timeLimit: 15 },
+            { id: 5, name: "烈陽星骸・獅子", image: "https://i.postimg.cc/G4sHHdkm/05-lie-yang-xing-hai-shi-zi.png", type: "霸王型", hpMultiplier: 1.5, timeLimit: 12 },
+            { id: 6, name: "秩序星骸・處女", image: "https://i.postimg.cc/mzTDX9Jv/06-zhi-xu-xing-hai-chu-nu.png", type: "精準型", hpMultiplier: 1.0, timeLimit: 15 },
+            { id: 7, name: "審判星骸・天秤", image: "https://i.postimg.cc/WDGzw8Ww/07-shen-pan-xing-hai-tian-cheng.png", type: "平衡型", hpMultiplier: 1.0, timeLimit: 15 },
+            { id: 8, name: "猛毒星骸・天蠍", image: "https://i.postimg.cc/sQ3X6WbC/08-meng-du-xing-hai-tian-xie.png", type: "劇毒型", hpMultiplier: 1.1, timeLimit: 12 },
+            { id: 9, name: "追擊星骸・射手", image: "https://i.postimg.cc/S2VKwspM/09-zhui-ji-xing-hai-she-shou.png", type: "連擊型", hpMultiplier: 1.8, timeLimit: 15 },
+            { id: 10, name: "冰晶星骸・摩羯", image: "https://i.postimg.cc/R6G0jFzT/10-bing-jing-xing-hai-mo-jie.png", type: "凍結型", hpMultiplier: 1.0, timeLimit: 15 },
+            { id: 11, name: "混沌星骸・水瓶", image: "https://i.postimg.cc/N9b0WMwN/11-hun-dun-xing-hai-shui-ping.png", type: "無序型", hpMultiplier: 0.8, timeLimit: 18 },
+            { id: 12, name: "魅惑星骸・雙魚", image: "https://i.postimg.cc/bDLvKJjC/12-mei-huo-xing-hai-shuang-yu.png", type: "幻術型", hpMultiplier: 0.9, timeLimit: 15 }
+        ];
+
+        /* ================= 雲端同步與認證 ================= */
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                await syncUserData();
+                setupLeaderboardListener(); 
+            } else {
+                currentUser = null;
+                showScreen('login');
+            }
+        });
+
+        async function syncUserData() {
+            if (!currentUser) return;
+            const userRef = doc(db, 'users', currentUser.uid);
+            const docSnap = await getDoc(userRef);
+            
+            let needsSave = false;
+            if (docSnap.exists()) {
+                inventory = { ...inventory, ...docSnap.data() };
+                if(inventory.pkWins === undefined) inventory.pkWins = 0;
+                if(inventory.pkTotal === undefined) inventory.pkTotal = 0;
+                if(inventory.aiRecords === undefined) inventory.aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
+            } else {
+                inventory.displayName = currentUser.displayName;
+                needsSave = true;
+            }
+
+            if (needsSave) saveInventory();
+            updateHUD();
+
+            if (!inventory.customName) {
+                document.getElementById('modal-nickname').classList.remove('hidden');
+                document.getElementById('modal-nickname').classList.add('flex');
+            } else if (inventory.unlockedPets.length === 0) {
+                showScreen('starter');
+            } else {
+                document.getElementById('player-display-name').innerText = inventory.customName;
+                showScreen('home');
+            }
+        }
+
+        window.saveNickname = async () => {
+            const input = document.getElementById('input-nickname').value.trim();
+            if(!input) return showToast('請輸入代號！', '#ef4444');
+            if(input.length > 10) return showToast('代號不能超過10個字！', '#ef4444');
+            
+            inventory.customName = input;
+            document.getElementById('player-display-name').innerText = input;
+            await saveInventory();
+            
+            document.getElementById('modal-nickname').classList.add('hidden');
+            document.getElementById('modal-nickname').classList.remove('flex');
+            
+            if (inventory.unlockedPets.length === 0) {
+                showScreen('starter');
+            } else {
+                showScreen('home');
+            }
+        };
+
+        let isSelectingStarter = false;
+        window.selectStarter = async (selection) => {
+            if (isSelectingStarter) return;
+            isSelectingStarter = true; 
+
+            let petId = selection;
+            if (selection === 'random') {
+                petId = Math.floor(Math.random() * 5) + 1; 
+            }
+
+            inventory.unlockedPets = [petId];
+            inventory.petsData[petId] = { level: 1, exp: 0 };
+            await saveInventory();
+            
+            const container = document.getElementById('confetti-container');
+            document.getElementById('celebrate-text').innerText = "契約締結！";
+            document.getElementById('celebrate-reward').innerHTML = `<span class="text-emerald-400">獲得專屬幻獸：${PET_DEX[petId].stageNames[0]}</span>`;
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+            
+            setTimeout(() => {
+                container.classList.add('hidden');
+                container.classList.remove('flex');
+                showScreen('home');
+                isSelectingStarter = false; 
+            }, 2500);
+        };
+
+        async function saveInventory() {
+            if (!currentUser) return;
+            updateHUD();
+            const userRef = doc(db, 'users', currentUser.uid);
+            updateDoc(userRef, inventory).catch(e => {
+                setDoc(userRef, inventory).catch(err => console.error("同步失敗", err));
+            });
+        }
+
+        window.document.getElementById('btn-google-login').onclick = () => {
+            const provider = new GoogleAuthProvider();
+            signInWithPopup(auth, provider).catch(error => showToast("登入失敗：" + error.message, "#ef4444"));
+        };
+
+        window.doLogout = () => signOut(auth);
+
+        /* ================= 核心工具 ================= */
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-' + id).classList.add('active');
+        }
+        window.showScreen = showScreen;
+
+        function updateHUD() {
+            document.getElementById('inv-stardust').innerText = Math.floor(inventory.stardust);
+            document.getElementById('inv-meat').innerText = Math.floor(inventory.meat);
+            document.getElementById('inv-stone').innerText = Math.floor(inventory.stones);
+            document.getElementById('inv-shards').innerText = Math.floor(inventory.universalShards);
+        }
+
+        function showToast(msg, borderColor = "#22d3ee") {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg; toast.style.borderColor = borderColor;
+            toast.style.opacity = '1'; setTimeout(() => toast.style.opacity = '0', 2500);
+        }
+
+        window.goHome = () => {
+            if(typeof bossTimerInterval !== 'undefined') clearInterval(bossTimerInterval);
+            if(typeof pvpAiTickInterval !== 'undefined') clearInterval(pvpAiTickInterval);
+            if(typeof pvpTimerInterval !== 'undefined') clearInterval(pvpTimerInterval);
+            if(typeof pvpMatchTimerInterval !== 'undefined') clearInterval(pvpMatchTimerInterval);
+            
+            document.getElementById('modal-select-pet').classList.add('hidden');
+            document.getElementById('modal-select-pet').classList.remove('flex');
+            document.getElementById('modal-pvp-pet').classList.add('hidden');
+            document.getElementById('modal-pvp-pet').classList.remove('flex');
+            document.getElementById('modal-pvp-mode').classList.add('hidden');
+            document.getElementById('modal-pvp-mode').classList.remove('flex');
+            document.getElementById('modal-pvp-ai').classList.add('hidden');
+            document.getElementById('modal-pvp-ai').classList.remove('flex');
+            document.getElementById('modal-pvp-matching').classList.add('hidden');
+            document.getElementById('modal-pvp-matching').classList.remove('flex');
+            
+            showScreen('home');
+        };
+
+        function showVictory(text, rewardText) {
+            const container = document.getElementById('confetti-container');
+            document.getElementById('celebrate-text').innerText = text;
+            document.getElementById('celebrate-reward').innerHTML = rewardText;
+            container.classList.remove('hidden'); container.classList.add('flex');
+            setTimeout(() => {
+                container.classList.add('hidden'); container.classList.remove('flex');
+            }, 3000);
+        }
+
+        /* ================= 抽題系統 ================= */
+        let sessionPool = [];
+        
+        function getNextIdiom() {
+            if (sessionPool.length === 0) {
+                sessionPool = [...window.currentQuestionPool].sort(() => Math.random() - 0.5);
+            }
+            
+            let idiomObj = sessionPool.pop();
+            
+            if (!window.availableSentencesMap[idiomObj.idiom] || window.availableSentencesMap[idiomObj.idiom].length === 0) {
+                let sentencesToLoad = idiomObj.sentences ? [...idiomObj.sentences] : [idiomObj.sentence || "＿＿＿＿"];
+                window.availableSentencesMap[idiomObj.idiom] = sentencesToLoad.sort(() => Math.random() - 0.5);
+            }
+
+            let selectedSentence = window.availableSentencesMap[idiomObj.idiom].pop();
+
+            return {
+                idiom: idiomObj.idiom,
+                meaning: idiomObj.meaning,
+                sentence: selectedSentence,
+                lesson: idiomObj.lesson
+            };
+        }
+
+        function getOptions(correct, count = 4) {
+            let opts = [correct];
+            let pool = window.idiomData.filter(i => i.idiom !== correct).sort(() => Math.random() - 0.5);
+            for(let i=0; i<count-1; i++) if(pool[i]) opts.push(pool[i].idiom);
+            return opts.sort(() => Math.random() - 0.5);
+        }
+
+        /* ================= 戰損分析與晶片庫 ================= */
+        window.recordMistake = (idiomStr) => {
+            if (!window.mistakesList.includes(idiomStr)) {
+                window.mistakesList.push(idiomStr);
+                localStorage.setItem('idiom_mistakes_v12', JSON.stringify(window.mistakesList));
+            }
+        };
+
+        window.showMistakesScreen = () => {
+            showScreen('mistakes');
+            const listEl = document.getElementById('mistake-list');
+            listEl.innerHTML = '';
+            if (window.mistakesList.length === 0) {
+                listEl.innerHTML = `<div class="text-center text-slate-500 mt-10 p-6 sci-fi-panel rounded-xl">防禦網完好無損，目前無戰損紀錄！🎉</div>`;
+                return;
+            }
+            let mistakeDataItems = window.idiomData.filter(i => window.mistakesList.includes(i.idiom));
+            mistakeDataItems.forEach(item => {
+                let div = document.createElement('div');
+                div.className = "sci-fi-panel p-3 rounded-xl border-l-4 border-rose-500 flex justify-between items-center";
+                div.innerHTML = `
+                    <div>
+                        <div class="font-bold text-lg text-white">${item.idiom} <span class="text-xs text-rose-400 ml-2">${item.lesson || ''}</span></div>
+                        <div class="text-xs text-slate-400">${item.meaning}</div>
+                    </div>
+                    <button onclick="removeMistake('${item.idiom}')" class="text-slate-500 hover:text-red-400 p-2"><i class="fas fa-trash"></i></button>
+                `;
+                listEl.appendChild(div);
+            });
+        };
+
+        window.removeMistake = (idiomStr) => {
+            window.mistakesList = window.mistakesList.filter(i => i !== idiomStr);
+            localStorage.setItem('idiom_mistakes_v12', JSON.stringify(window.mistakesList));
+            window.showMistakesScreen();
+        };
+
+        window.openPasswordModal = () => {
+            document.getElementById('input-admin-pwd').value = '';
+            document.getElementById('modal-password').classList.remove('hidden');
+            document.getElementById('modal-password').classList.add('flex');
+        };
+
+        window.closePasswordModal = () => {
+            document.getElementById('modal-password').classList.add('hidden');
+            document.getElementById('modal-password').classList.remove('flex');
+        };
+
+        window.verifyPassword = () => {
+            const pwd = document.getElementById('input-admin-pwd').value;
+            if(pwd === "740821") {
+                window.closePasswordModal();
+                window.showManageScreen();
+            } else {
+                showToast("授權碼錯誤！存取拒絕。", "#ef4444");
+            }
+        };
+
+        window.showManageScreen = () => { showScreen('manage'); window.renderIdiomList(); };
+
+        window.renderIdiomList = () => {
+            document.getElementById('total-idioms-count').innerText = window.idiomData.length;
+            const listEl = document.getElementById('all-idioms-list');
+            listEl.innerHTML = '';
+            [...window.idiomData].reverse().forEach((item) => {
+                let div = document.createElement('div');
+                div.className = "border-b border-slate-700 p-2 flex justify-between items-center";
+                
+                let displaySentence = item.sentences ? item.sentences[0] : item.sentence;
+
+                div.innerHTML = `
+                    <div class="flex-1 pr-2">
+                        <span class="font-bold text-cyan-400">${item.idiom}</span>
+                        <span class="text-xs text-slate-500 ml-2">${item.lesson || '自訂'}</span>
+                        <div class="text-xs text-slate-400 truncate">${item.meaning}</div>
+                        <div class="text-xs text-slate-500 truncate hidden md:block">例句：${displaySentence}</div>
+                    </div>
+                    <button onclick="deleteIdiom('${item.idiom}')" class="text-red-900 hover:text-red-500 p-1"><i class="fas fa-times-circle"></i></button>
+                `;
+                listEl.appendChild(div);
+            });
+        };
+
+        window.addNewIdiom = () => {
+            const idiom = document.getElementById('input-idiom').value.trim();
+            const meaning = document.getElementById('input-meaning').value.trim();
+            const sentence = document.getElementById('input-sentence').value.trim();
+            if (!idiom || !meaning || !sentence || !sentence.includes("＿＿＿＿")) return showToast("資料不完整或缺少「＿＿＿＿」", "#ef4444");
+            if (window.idiomData.some(i => i.idiom === idiom)) return showToast("晶片已存在", "#f59e0b");
+            
+            window.idiomData.push({ idiom, meaning, sentences: [sentence], lesson: "custom" });
+            localStorage.setItem('idiom_data_v12', JSON.stringify(window.idiomData));
+            
+            document.getElementById('input-idiom').value = ''; document.getElementById('input-meaning').value = ''; document.getElementById('input-sentence').value = '';
+            showToast("晶片寫入成功！", "#10b981"); window.renderIdiomList();
+        };
+
+        window.deleteIdiom = (idiomStr) => {
+            if (window.idiomData.length <= 5) return showToast("最少需保留 5 組數據", "#ef4444");
+            window.idiomData = window.idiomData.filter(i => i.idiom !== idiomStr);
+            localStorage.setItem('idiom_data_v12', JSON.stringify(window.idiomData));
+            if(window.mistakesList.includes(idiomStr)) window.removeMistake(idiomStr);
+            window.renderIdiomList();
+        };
+
+        let confirmActionCallback = null;
+        window.openConfirmModal = (msg, callback) => {
+            document.getElementById('confirm-msg').innerText = msg;
+            confirmActionCallback = callback;
+            document.getElementById('modal-confirm').classList.remove('hidden');
+            document.getElementById('modal-confirm').classList.add('flex');
+        };
+
+        window.closeConfirmModal = () => {
+            document.getElementById('modal-confirm').classList.add('hidden');
+            document.getElementById('modal-confirm').classList.remove('flex');
+        };
+
+        window.document.getElementById('btn-confirm-action').onclick = () => {
+            window.closeConfirmModal();
+            if(confirmActionCallback) confirmActionCallback();
+        };
+
+        window.resetDefaultIdioms = () => {
+            window.openConfirmModal("確定要重置題庫嗎？自訂的晶片將會被永久刪除！", () => {
+                window.idiomData = [...defaultIdioms];
+                localStorage.setItem('idiom_data_v12', JSON.stringify(window.idiomData));
+                window.renderIdiomList(); 
+                showToast("系統重置完畢", "#10b981");
+            });
+        };
+
+        /* ================= 戰前準備 (PVE) ================= */
+        let pendingMode = '', activePetId = 1, windSkillUsed = false; 
+
+        window.openSelectPetModal = (mode) => {
+            pendingMode = mode; activePetId = inventory.unlockedPets[0];
+            document.getElementById('select-pet-title').innerText = mode === 'meteor' ? '防禦作戰準備' : '討伐作戰準備';
+            document.getElementById('modal-select-pet').classList.remove('hidden'); document.getElementById('modal-select-pet').classList.add('flex');
+            renderSelectPet();
+        };
+
+        function renderSelectPet() {
+            const grid = document.getElementById('select-pet-grid'); grid.innerHTML = '';
+            inventory.unlockedPets.forEach(pid => {
+                let btn = document.createElement('div');
+                let isSel = pid === activePetId;
+                let petLevel = inventory.petsData[pid] ? inventory.petsData[pid].level : 1;
+                let stage = getPetStage(petLevel);
+                
+                btn.className = `w-16 h-16 rounded-xl flex items-center justify-center cursor-pointer transition-all ${isSel ? 'bg-cyan-900 border-2 border-cyan-400 scale-110 shadow-[0_0_10px_cyan]' : 'bg-slate-800 border border-slate-600 opacity-70 hover:opacity-100'}`;
+                btn.innerHTML = `<img src="${PET_DEX[pid].images[stage]}" class="max-w-full max-h-full object-contain">`;
+                btn.onclick = () => { activePetId = pid; renderSelectPet(); };
+                grid.appendChild(btn);
+            });
+            let dex = PET_DEX[activePetId];
+            document.getElementById('select-pet-skill-name').innerText = `【${dex.skillName}】`;
+            document.getElementById('select-pet-skill-desc').innerText = dex.skillDesc;
+        }
+
+        window.closeSelectPetModal = () => {
+            document.getElementById('modal-select-pet').classList.add('hidden'); document.getElementById('modal-select-pet').classList.remove('flex');
+        };
+
+        window.confirmDeployment = () => {
+            const range = document.getElementById('select-lesson-range').value;
+            window.currentTrainingRange = range; 
+            
+            if (range === 'all') {
+                window.currentQuestionPool = [...window.idiomData];
+            } else if (range === 'custom') {
+                window.currentQuestionPool = window.idiomData.filter(i => i.lesson === 'custom');
+                if (window.currentQuestionPool.length === 0) {
+                    showToast("沒有自訂晶片，改為綜合練習", "#f59e0b");
+                    window.currentQuestionPool = [...window.idiomData];
+                    window.currentTrainingRange = 'all';
+                }
+            } else {
+                window.currentQuestionPool = window.idiomData.filter(i => i.lesson === range);
+                if (window.currentQuestionPool.length === 0) {
+                    showToast("該課尚無題庫，改為綜合練習", "#f59e0b");
+                    window.currentQuestionPool = [...window.idiomData];
+                    window.currentTrainingRange = 'all';
+                }
+            }
+
+            window.closeSelectPetModal(); 
+            windSkillUsed = false; 
+            sessionPool = [];
+
+            if (pendingMode === 'meteor') startGameMeteor(); else startGameBoss();
+        };
+
+        /* ================= 隕石防禦戰 (單人 PVE) ================= */
+        let meteorWave = 1, baseHp = 3, currentMeteorTarget = null, isWaveResolving = false, currMeteorCount = 5, currMeteorSpeed = 12;
+
+        function startGameMeteor() {
+            showScreen('meteor'); meteorWave = 1; baseHp = 3;
+            document.getElementById('btn-wind-skill-meteor').classList.toggle('hidden', activePetId !== 5);
+            
+            let stage = getPetStage(inventory.petsData[activePetId].level);
+            document.getElementById('meteor-pet-sprite').innerHTML = `<img src="${PET_DEX[activePetId].images[stage]}" class="max-w-full max-h-full object-contain">`;
+            
+            updateMeteorUI(); nextMeteorWave();
+        }
+
+        function updateMeteorUI() {
+            document.getElementById('meteor-wave').innerText = meteorWave;
+            document.getElementById('meteor-hp').innerHTML = Array(3).fill(0).map((_,i) => i < baseHp ? '<i class="fas fa-heart text-red-500"></i>' : '<i class="far fa-heart text-slate-600"></i>').join('');
+        }
+
+        window.retreatMeteor = () => {
+            if (isWaveResolving) return;
+            isWaveResolving = true;
+            endMeteorGame(true);
+        };
+
+        function endMeteorGame(isRetreat) {
+            let reward = (meteorWave - 1) * (activePetId === 3 ? 1.5 : 1); 
+            let rangeLabel = "";
+            
+            if (window.currentTrainingRange !== 'all') {
+                reward = reward * 0.5;
+                rangeLabel = "<br><span class='text-xs text-orange-400'>(分課模式獎勵 50%)</span>";
+            }
+            reward = Math.floor(reward);
+            
+            inventory.meat += reward;
+            if ((meteorWave - 1) > (inventory.maxMeteorWaves || 0)) inventory.maxMeteorWaves = meteorWave - 1;
+            saveInventory();
+            
+            if (isRetreat) {
+                showVictory("成功撤退！", `<span class="text-yellow-400">防禦了 ${meteorWave-1} 波<br>獲得 ${reward} 肉塊</span>${rangeLabel}`);
+            } else {
+                showVictory("防線崩潰！", `<span class="text-red-400">撐過了 ${meteorWave-1} 波<br>獲得 ${reward} 肉塊</span>${rangeLabel}`);
+            }
+            
+            document.getElementById('meteor-container').innerHTML = '';
+            setTimeout(window.goToDefenseLeaderboard, 3000);
+        }
+
+        function nextMeteorWave() {
+            if (baseHp <= 0) { endMeteorGame(false); return; }
+
+            isWaveResolving = false;
+            currMeteorCount = activePetId === 1 ? 3 : 5; 
+            
+            let baseSpeed = activePetId === 2 ? 16 : 12;
+            currMeteorSpeed = Math.max(3, baseSpeed * Math.pow(0.99, meteorWave - 1));
+
+            currentMeteorTarget = getNextIdiom();
+            document.getElementById('meteor-question').innerText = `「${currentMeteorTarget.meaning}」`;
+            document.getElementById('meteor-lesson-badge').innerText = currentMeteorTarget.lesson || '特訓';
+            spawnMeteors();
+        }
+
+        function spawnMeteors() {
+            const container = document.getElementById('meteor-container'); container.innerHTML = '';
+            let options = getOptions(currentMeteorTarget.idiom, currMeteorCount);
+            let spacing = 100 / currMeteorCount;
+            
+            options.forEach((opt, idx) => {
+                let meteor = document.createElement('div');
+                meteor.className = "meteor bg-slate-800 text-yellow-300 font-bold border-2 border-yellow-600 rounded-lg p-2 text-center btn-press cursor-pointer shadow-[0_0_10px_rgba(202,138,4,0.5)] meteor-opt";
+                meteor.style.left = `calc(${(idx * spacing) + (spacing/2)}% - 10%)`; 
+                meteor.style.width = '20%'; 
+                meteor.style.animationDuration = `${currMeteorSpeed}s`;
+                meteor.innerHTML = `<i class="fas fa-meteor text-xl mb-1 text-orange-500"></i><br>${opt}`;
+                meteor.onclick = () => shootMeteor(meteor, opt);
+                meteor.addEventListener('animationiteration', meteorHitBase);
+                container.appendChild(meteor);
+            });
+        }
+
+        window.useWindSkillMeteor = () => {
+            if (windSkillUsed) return;
+            windSkillUsed = true; document.getElementById('btn-wind-skill-meteor').classList.add('hidden');
+            let els = Array.from(document.querySelectorAll('.meteor-opt'));
+            let wrongs = els.filter(el => !el.innerText.includes(currentMeteorTarget.idiom));
+            if(wrongs.length > 0) wrongs[0].style.display = 'none';
+            if(wrongs.length > 1) wrongs[1].style.display = 'none';
+            showToast("洞察之風：已吹散干擾！", "#34d399");
+        };
+
+        function shootMeteor(element, selected) {
+            if (isWaveResolving) return; 
+            isWaveResolving = true; inventory.totalAnswered++;
+
+            const petSprite = document.getElementById('meteor-pet-sprite');
+            const petRect = petSprite.getBoundingClientRect();
+            const meteorRect = element.getBoundingClientRect();
+            const dashX = (meteorRect.left + meteorRect.width / 2) - (petRect.left + petRect.width / 2);
+            const dashY = (meteorRect.top + meteorRect.height / 2) - (petRect.top + petRect.height / 2);
+            
+            petSprite.style.setProperty('--dash-x', `${dashX}px`);
+            petSprite.style.setProperty('--dash-y', `${dashY}px`);
+            
+            petSprite.classList.remove('pet-meteor-dash-anim');
+            void petSprite.offsetWidth;
+            petSprite.classList.add('pet-meteor-dash-anim');
+
+            setTimeout(() => {
+                if (selected === currentMeteorTarget.idiom) {
+                    inventory.correctAnswers++;
+                    element.innerHTML = '💥'; element.style.animationPlayState = 'paused';
+                    setTimeout(() => { document.getElementById('meteor-container').innerHTML = ''; meteorWave++; updateMeteorUI(); nextMeteorWave(); }, 300);
+                } else {
+                    window.recordMistake(currentMeteorTarget.idiom);
+                    if (activePetId === 4 && Math.random() < 0.3) {
+                        showToast("絕對零度：防禦了傷害！", "#93c5fd");
+                    } else { document.body.classList.add('shake'); baseHp--; }
+                    setTimeout(() => { document.body.classList.remove('shake'); document.getElementById('meteor-container').innerHTML = ''; meteorWave++; updateMeteorUI(); nextMeteorWave(); }, 400);
+                }
+            }, 140);
+        }
+        
+        function meteorHitBase() {
+            if (isWaveResolving) return; 
+            isWaveResolving = true; baseHp--; document.body.classList.add('shake');
+            setTimeout(() => { document.body.classList.remove('shake'); document.getElementById('meteor-container').innerHTML = ''; meteorWave++; updateMeteorUI(); nextMeteorWave(); }, 400);
+        }
+
+        /* ================= 巨獸討伐戰 (單人 PVE) ================= */
+        let bossHp = 0, bossMaxHp = 0, playerShield = 3, bossTimerInterval, timeLeft = 0, maxTime = 10;
+        let currentBoss = null, currentBossQ = null, combo = 0, isBossResolving = false, battleStartTime = 0;
+
+        function startGameBoss() {
+            showScreen('boss');
+            playerShield = activePetId === 6 ? 1 : 3; 
+            combo = 0; battleStartTime = Date.now();
+            document.getElementById('combo-counter').innerText = combo;
+            document.getElementById('btn-wind-skill-boss').classList.toggle('hidden', activePetId !== 5);
+            
+            let stage = getPetStage(inventory.petsData[activePetId].level);
+            document.getElementById('battle-pet-sprite').innerHTML = `<img src="${PET_DEX[activePetId].images[stage]}" class="max-w-full max-h-full object-contain">`;
+            
+            currentBoss = BOSS_DATA[Math.floor(Math.random() * BOSS_DATA.length)];
+            bossMaxHp = 300 * currentBoss.hpMultiplier; bossHp = bossMaxHp;
+            
+            document.getElementById('boss-name-display').innerText = `🔥 ${currentBoss.name} 🔥`;
+            document.getElementById('boss-trait-display').innerText = `特性: ${currentBoss.type}`;
+            document.getElementById('boss-sprite').innerHTML = `<img src="${currentBoss.image}" class="max-w-full max-h-full object-contain">`;
+            
+            updateBossUI(); nextBossTurn();
+        }
+
+        function updateBossUI() {
+            document.getElementById('boss-hp-bar').style.width = `${Math.max(0, (bossHp/bossMaxHp)*100)}%`;
+            document.getElementById('boss-hp-text').innerText = Math.floor(Math.max(0, bossHp));
+            document.getElementById('player-hp').innerHTML = Array(3).fill(0).map((_,i) => i < playerShield ? '<i class="fas fa-square text-cyan-400"></i>' : '<i class="far fa-square text-slate-600"></i>').join('');
+        }
+
+        function nextBossTurn() {
+            if (playerShield <= 0) {
+                saveInventory(); showToast("裝甲耗盡！被迫撤退。", "#ef4444");
+                setTimeout(window.goHome, 1500); return;
+            }
+            if (bossHp <= 0) {
+                let killTime = (Date.now() - battleStartTime) / 1000;
+                let reward = 200 * (activePetId === 3 ? 1.2 : 1); 
+                let rangeLabel = "";
+                
+                if (window.currentTrainingRange !== 'all') {
+                    reward = reward * 0.5;
+                    rangeLabel = "<br><span class='text-xs text-orange-400'>(分課模式獎勵 50%)</span>";
+                }
+                reward = Math.floor(reward);
+                inventory.stardust += reward;
+                
+                if (!inventory.bossRecords) inventory.bossRecords = {};
+                if (!inventory.bossRecords[currentBoss.id] || killTime < inventory.bossRecords[currentBoss.id]) {
+                    inventory.bossRecords[currentBoss.id] = killTime;
+                }
+                
+                if (killTime < inventory.fastestBossTime) inventory.fastestBossTime = killTime; 
+                saveInventory();
+                
+                document.getElementById('boss-sprite').innerHTML = '<div class="text-6xl">☠️</div>';
+                showVictory("討伐成功！", `<span class="text-yellow-400">耗時 ${killTime.toFixed(1)} 秒<br>獲得 ${reward} 星塵幣</span>${rangeLabel}`);
+                setTimeout(() => window.goToBossLeaderboard(currentBoss.id), 3500); return;
+            }
+
+            isBossResolving = false; currentBossQ = getNextIdiom();
+            document.getElementById('boss-question').innerText = currentBossQ.sentence;
+            document.getElementById('boss-lesson-badge').innerText = currentBossQ.lesson || '特訓';
+            
+            const optsEl = document.getElementById('boss-options'); optsEl.innerHTML = '';
+            getOptions(currentBossQ.idiom).forEach(opt => {
+                let btn = document.createElement('button');
+                btn.className = "boss-opt btn-press bg-slate-700 text-white font-bold py-2 md:py-3 px-2 rounded-lg border border-slate-500 text-sm md:text-base leading-tight";
+                btn.innerText = opt; btn.onclick = () => attackBoss(opt);
+                optsEl.appendChild(btn);
+            });
+
+            maxTime = currentBoss.timeLimit * (activePetId === 2 ? 1.5 : 1); timeLeft = maxTime;
+            
+            clearInterval(bossTimerInterval);
+            bossTimerInterval = setInterval(() => {
+                timeLeft -= 0.1;
+                document.getElementById('boss-timer-text').innerText = Math.max(0, timeLeft).toFixed(1);
+                document.getElementById('boss-timer-bar').style.width = `${(timeLeft/maxTime)*100}%`;
+                if (timeLeft <= 0) { clearInterval(bossTimerInterval); handleBossMiss(); }
+            }, 100);
+        }
+
+        window.useWindSkillBoss = () => {
+            if (windSkillUsed) return;
+            windSkillUsed = true; document.getElementById('btn-wind-skill-boss').classList.add('hidden');
+            let els = Array.from(document.querySelectorAll('.boss-opt'));
+            let wrongs = els.filter(el => el.innerText !== currentBossQ.idiom);
+            if(wrongs.length > 0) wrongs[0].style.visibility = 'hidden';
+            if(wrongs.length > 1) wrongs[1].style.visibility = 'hidden';
+            showToast("洞察之風：選項已減少！", "#34d399");
+        };
+
+        function attackBoss(selected) {
+            if (isBossResolving) return;
+            isBossResolving = true; clearInterval(bossTimerInterval); inventory.totalAnswered++;
+
+            const petSprite = document.getElementById('battle-pet-sprite');
+            petSprite.classList.remove('pet-attack-anim');
+            void petSprite.offsetWidth;
+            petSprite.classList.add('pet-attack-anim');
+
+            if (selected === currentBossQ.idiom) {
+                inventory.correctAnswers++; combo++; 
+                
+                const comboEl = document.getElementById('combo-counter');
+                comboEl.innerText = combo;
+                comboEl.parentElement.classList.remove('shake');
+                void comboEl.parentElement.offsetWidth;
+                comboEl.parentElement.classList.add('shake');
+
+                let dmg = 50 * (1 + Math.min(combo * 0.1, 0.5)); 
+                let isCrit = (maxTime - timeLeft) < 5;
+                let critMult = 1;
+                
+                let comboPrefix = combo > 1 ? `${combo}連擊! ` : '';
+                let floatText = `${comboPrefix}-${Math.floor(dmg)}`;
+
+                if (isCrit) {
+                    critMult = activePetId === 6 ? 2.5 : 1.5; 
+                    dmg *= critMult; floatText = `💥暴擊! ${comboPrefix}-${Math.floor(dmg)}`;
+                }
+
+                bossHp -= dmg;
+                showFloatText(floatText, isCrit ? '#fde047' : '#fff');
+                document.getElementById('boss-sprite').classList.add('shake', 'brightness-200');
+                setTimeout(() => document.getElementById('boss-sprite').classList.remove('shake', 'brightness-200'), 500);
+                
+                updateBossUI(); setTimeout(nextBossTurn, 800);
+            } else {
+                window.recordMistake(currentBossQ.idiom); handleBossMiss();
+            }
+        }
+
+        function handleBossMiss() {
+            if (activePetId === 4 && Math.random() < 0.3) {
+                showToast("絕對零度！免疫受傷並維持Combo！", "#93c5fd");
+            } else {
+                combo = 0; document.getElementById('combo-counter').innerText = combo;
+                playerShield--; document.body.classList.add('shake'); showToast("遭受巨獸反擊！裝甲受損", "#ef4444");
+            }
+            updateBossUI(); setTimeout(nextBossTurn, 1000);
+        }
+
+        function showFloatText(text, color) {
+            const el = document.getElementById('dmg-float-text');
+            el.innerText = text; el.style.color = color;
+            el.classList.remove('crit-text'); void el.offsetWidth; el.classList.add('crit-text');
+        }
+
+        /* ================= PVP 系統 (AI & Matchmaking) ================= */
+        let pvpOpponentType = 'ai'; 
+        let pvpAiDifficulty = 'normal';
+        let pvpAiTickInterval;
+        let pvpMatchTimerInterval;
+        let pvpTimerInterval;
+        
+        let pvpProgress = 50; 
+        let pvpTimeLeft = 60;
+        let pvpCurrentQ = null;
+        let pvpIsResolving = false;
+        let pvpPlayerCombo = 0;
+        let pvpAiCombo = 0;
+        let pvpPlayerShields = 0;
+        let pvpAiShields = 0;
+        let pvpAiPausedUntil = 0; 
+        let pvpPlayerOptsBurnt = 0; 
+        let pvpPlayerBlackhole = false;
+        let pvpAiBlackhole = false;
+
+        window.openPvPPetModal = () => {
+            activePetId = inventory.unlockedPets[0];
+            document.getElementById('modal-pvp-pet').classList.remove('hidden');
+            document.getElementById('modal-pvp-pet').classList.add('flex');
+            renderPvPPetSelect();
+        };
+
+        function renderPvPPetSelect() {
+            const grid = document.getElementById('pvp-pet-grid'); grid.innerHTML = '';
+            inventory.unlockedPets.forEach(pid => {
+                let btn = document.createElement('div');
+                let isSel = pid === activePetId;
+                let petLevel = inventory.petsData[pid] ? inventory.petsData[pid].level : 1;
+                let stage = getPetStage(petLevel);
+                
+                btn.className = `w-16 h-16 rounded-xl flex items-center justify-center cursor-pointer transition-all ${isSel ? 'bg-indigo-900 border-2 border-indigo-400 scale-110 shadow-[0_0_10px_indigo]' : 'bg-slate-800 border border-slate-600 opacity-70 hover:opacity-100'}`;
+                btn.innerHTML = `<img src="${PET_DEX[pid].images[stage]}" class="max-w-full max-h-full object-contain">`;
+                btn.onclick = () => { activePetId = pid; renderPvPPetSelect(); };
+                grid.appendChild(btn);
+            });
+            
+            let dex = PET_DEX[activePetId];
+            let level = inventory.petsData[activePetId].level;
+            let stage = getPetStage(level);
+            
+            document.getElementById('pvp-pet-skill-name').innerText = `【${dex.pvpSkillName}】`;
+            
+            let badgeEl = document.getElementById('pvp-pet-stage-badge');
+            if (stage === 0) {
+                badgeEl.innerText = `幼年期 (Lv.${level})`;
+                badgeEl.className = "text-xs px-2 py-1 rounded bg-slate-700 text-slate-400 font-bold";
+                document.getElementById('pvp-pet-skill-desc').innerHTML = "<span class='text-slate-500'>幼年期尚未覺醒技能，請利用肉塊升級至 Lv.10。</span>";
+            } else if (stage === 1) {
+                badgeEl.innerText = `成熟期 (Lv.${level})`;
+                badgeEl.className = "text-xs px-2 py-1 rounded bg-indigo-900 text-indigo-300 font-bold border border-indigo-500";
+                document.getElementById('pvp-pet-skill-desc').innerText = dex.pvpSkillDesc;
+            } else {
+                badgeEl.innerText = `究極體 (Lv.${level})`;
+                badgeEl.className = "text-xs px-2 py-1 rounded bg-purple-900 text-purple-300 font-bold border border-purple-500 shadow-[0_0_5px_purple]";
+                document.getElementById('pvp-pet-skill-desc').innerText = dex.pvpSkillDesc;
+            }
+        }
+
+        window.closePvPPetModal = () => {
+            document.getElementById('modal-pvp-pet').classList.add('hidden');
+            document.getElementById('modal-pvp-pet').classList.remove('flex');
+        };
+
+        window.confirmPvPPet = () => {
+            const range = document.getElementById('pvp-lesson-range').value;
+            window.currentTrainingRange = range;
+            
+            if (range === 'all') {
+                window.currentQuestionPool = [...window.idiomData];
+            } else if (range === 'custom') {
+                window.currentQuestionPool = window.idiomData.filter(i => i.lesson === 'custom');
+                if (window.currentQuestionPool.length === 0) {
+                    showToast("沒有自訂晶片，改為綜合競技", "#f59e0b");
+                    window.currentQuestionPool = [...window.idiomData];
+                }
+            } else {
+                window.currentQuestionPool = window.idiomData.filter(i => i.lesson === range);
+                if (window.currentQuestionPool.length === 0) {
+                    showToast("該課尚無題庫，改為綜合競技", "#f59e0b");
+                    window.currentQuestionPool = [...window.idiomData];
+                }
+            }
+
+            window.closePvPPetModal();
+            document.getElementById('modal-pvp-mode').classList.remove('hidden');
+            document.getElementById('modal-pvp-mode').classList.add('flex');
+        };
+
+        window.closePvPModeModal = () => {
+            document.getElementById('modal-pvp-mode').classList.add('hidden');
+            document.getElementById('modal-pvp-mode').classList.remove('flex');
+            window.openPvPPetModal();
+        };
+
+        window.openPvPAIModal = () => {
+            document.getElementById('modal-pvp-mode').classList.add('hidden');
+            document.getElementById('modal-pvp-mode').classList.remove('flex');
+            document.getElementById('modal-pvp-ai').classList.remove('hidden');
+            document.getElementById('modal-pvp-ai').classList.add('flex');
+        };
+
+        window.closePvPAIModal = () => {
+            document.getElementById('modal-pvp-ai').classList.add('hidden');
+            document.getElementById('modal-pvp-ai').classList.remove('flex');
+            document.getElementById('modal-pvp-mode').classList.remove('hidden');
+            document.getElementById('modal-pvp-mode').classList.add('flex');
+        };
+
+        let pvpMatchTimeLeft = 60;
+        window.startPvPMatchmaking = () => {
+            document.getElementById('modal-pvp-mode').classList.add('hidden');
+            document.getElementById('modal-pvp-mode').classList.remove('flex');
+            
+            document.getElementById('pvp-match-fail-box').classList.add('hidden');
+            document.getElementById('pvp-match-fail-box').classList.remove('flex');
+            document.getElementById('btn-cancel-match').classList.remove('hidden');
+            
+            pvpMatchTimeLeft = 60;
+            document.getElementById('pvp-match-timer').innerText = pvpMatchTimeLeft;
+            
+            document.getElementById('modal-pvp-matching').classList.remove('hidden');
+            document.getElementById('modal-pvp-matching').classList.add('flex');
+            
+            pvpMatchTimerInterval = setInterval(() => {
+                pvpMatchTimeLeft--;
+                document.getElementById('pvp-match-timer').innerText = pvpMatchTimeLeft;
+                
+                if (pvpMatchTimeLeft <= 0) {
+                    clearInterval(pvpMatchTimerInterval);
+                    document.getElementById('pvp-match-fail-box').classList.remove('hidden');
+                    document.getElementById('pvp-match-fail-box').classList.add('flex');
+                    document.getElementById('btn-cancel-match').classList.add('hidden');
+                }
+            }, 1000);
+        };
+
+        window.cancelMatchmaking = () => {
+            clearInterval(pvpMatchTimerInterval);
+            document.getElementById('modal-pvp-matching').classList.add('hidden');
+            document.getElementById('modal-pvp-matching').classList.remove('flex');
+            document.getElementById('modal-pvp-mode').classList.remove('hidden');
+            document.getElementById('modal-pvp-mode').classList.add('flex');
+        };
+
+        window.continueMatchmaking = () => {
+            clearInterval(pvpMatchTimerInterval);
+            document.getElementById('pvp-match-fail-box').classList.add('hidden');
+            document.getElementById('pvp-match-fail-box').classList.remove('flex');
+            document.getElementById('btn-cancel-match').classList.remove('hidden');
+            pvpMatchTimeLeft = 30;
+            document.getElementById('pvp-match-timer').innerText = pvpMatchTimeLeft;
+            pvpMatchTimerInterval = setInterval(() => {
+                pvpMatchTimeLeft--;
+                document.getElementById('pvp-match-timer').innerText = pvpMatchTimeLeft;
+                if (pvpMatchTimeLeft <= 0) {
+                    clearInterval(pvpMatchTimerInterval);
+                    document.getElementById('pvp-match-fail-box').classList.remove('hidden');
+                    document.getElementById('pvp-match-fail-box').classList.add('flex');
+                    document.getElementById('btn-cancel-match').classList.add('hidden');
+                }
+            }, 1000);
+        };
+
+        window.switchToAIFromMatch = () => {
+            clearInterval(pvpMatchTimerInterval);
+            document.getElementById('modal-pvp-matching').classList.add('hidden');
+            document.getElementById('modal-pvp-matching').classList.remove('flex');
+            document.getElementById('modal-pvp-ai').classList.remove('hidden');
+            document.getElementById('modal-pvp-ai').classList.add('flex');
+        };
+
+        window.startPvPAI = (difficulty) => {
+            pvpOpponentType = 'ai';
+            pvpAiDifficulty = difficulty;
+            
+            document.getElementById('modal-pvp-ai').classList.add('hidden');
+            document.getElementById('modal-pvp-ai').classList.remove('flex');
+            
+            initPvPBattle();
+        };
+
+        function initPvPBattle() {
+            showScreen('pvp');
+            sessionPool = [];
+            pvpProgress = 50;
+            pvpTimeLeft = 60;
+            pvpPlayerCombo = 0;
+            pvpAiCombo = 0;
+            pvpPlayerOptsBurnt = 0;
+            pvpAiPausedUntil = 0;
+            pvpPlayerBlackhole = false;
+            pvpAiBlackhole = false;
+            
+            let pStage = getPetStage(inventory.petsData[activePetId].level);
+            if (activePetId === 3 && pStage > 0) pvpPlayerShields = 1; else pvpPlayerShields = 0;
+            pvpAiShields = 0; 
+            
+            document.getElementById('pvp-timer-text').innerText = pvpTimeLeft;
+            document.getElementById('pvp-p1-name').innerText = inventory.customName || '我方';
+            document.getElementById('pvp-p1-pet').innerHTML = `<img src="${PET_DEX[activePetId].images[pStage]}" class="max-w-full max-h-full object-contain">`;
+            
+            let aiName = "訓練機器人"; let aiImg = "https://i.postimg.cc/jwqxQbJj/20-da-de-ji-jia.png";
+            if(pvpAiDifficulty === 'hard') { aiName = "菁英護衛"; aiImg = "https://i.postimg.cc/cKB1nH6Z/17-xun-lei-lang-zu.png"; }
+            if(pvpAiDifficulty === 'hell') { aiName = "星際指揮官"; aiImg = "https://i.postimg.cc/23c6GVGC/15-heng-xing-bao-yan-long.png"; }
+            if(pvpAiDifficulty === 'abyss') { aiName = "AI最終兵器"; aiImg = "https://i.postimg.cc/tnZH2CR1/30-hei-dong-tun-shi-zhe.png"; }
+            document.getElementById('pvp-p2-name').innerText = aiName;
+            document.getElementById('pvp-p2-pet').innerHTML = `<img src="${aiImg}" class="max-w-full max-h-full object-contain filter grayscale brightness-150">`; 
+            
+            updatePvPUI();
+            nextPvPTurn();
+            
+            pvpTimerInterval = setInterval(() => {
+                pvpTimeLeft--;
+                document.getElementById('pvp-timer-text').innerText = Math.max(0, pvpTimeLeft);
+                if (pvpTimeLeft <= 0) {
+                    clearInterval(pvpTimerInterval);
+                    endPvPGame();
+                }
+            }, 1000);
+            
+            startAiLoop();
+        }
+
+        function updatePvPUI() {
+            document.getElementById('pvp-bar-p1').style.width = `${pvpProgress}%`;
+            document.getElementById('pvp-bar-p2').style.width = `${100 - pvpProgress}%`;
+            
+            let p1ComboEl = document.getElementById('pvp-p1-combo');
+            p1ComboEl.innerText = `${pvpPlayerCombo} 連擊`;
+            p1ComboEl.style.opacity = pvpPlayerCombo > 1 ? 1 : 0;
+            
+            let p2ComboEl = document.getElementById('pvp-p2-combo');
+            p2ComboEl.innerText = `${pvpAiCombo} 連擊`;
+            p2ComboEl.style.opacity = pvpAiCombo > 1 ? 1 : 0;
+
+            document.getElementById('pvp-p1-shield').innerHTML = Array(pvpPlayerShields).fill('<i class="fas fa-shield-alt"></i>').join('');
+        }
+
+        function nextPvPTurn() {
+            if (pvpProgress >= 100 || pvpProgress <= 0) {
+                clearInterval(pvpTimerInterval);
+                clearInterval(pvpAiTickInterval);
+                endPvPGame();
+                return;
+            }
+
+            pvpIsResolving = false;
+            pvpCurrentQ = getNextIdiom();
+            document.getElementById('pvp-question').innerText = pvpCurrentQ.sentence;
+            document.getElementById('pvp-lesson-badge').innerText = pvpCurrentQ.lesson || '競技';
+            
+            renderPvPOptions();
+        }
+
+        function renderPvPOptions() {
+            const optsEl = document.getElementById('pvp-options'); 
+            optsEl.innerHTML = '';
+            
+            if (pvpPlayerBlackhole) {
+                optsEl.innerHTML += `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20"><div class="text-6xl blackhole-anim">🌌</div></div>`;
+            }
+
+            let options = getOptions(pvpCurrentQ.idiom);
+            
+            let burntIndexes = [];
+            if (pvpPlayerOptsBurnt > 0) {
+                let wrongs = [0,1,2,3].filter(i => options[i] !== pvpCurrentQ.idiom);
+                wrongs = wrongs.sort(() => Math.random() - 0.5);
+                burntIndexes = wrongs.slice(0, pvpPlayerOptsBurnt);
+                pvpPlayerOptsBurnt = 0; 
+            }
+
+            options.forEach((opt, idx) => {
+                let btn = document.createElement('button');
+                if (burntIndexes.includes(idx)) {
+                    btn.className = "pvp-opt btn-press bg-slate-900 text-slate-900 font-bold py-3 md:py-4 px-2 rounded-lg border-2 border-black";
+                    btn.innerText = "焦黑";
+                    btn.disabled = true;
+                } else {
+                    btn.className = "pvp-opt btn-press bg-slate-800 text-white font-bold py-3 md:py-4 px-2 rounded-lg border border-indigo-500 text-sm md:text-base leading-tight hover:bg-indigo-900 transition";
+                    btn.innerText = opt; 
+                    btn.onclick = () => window.attackPvP(opt);
+                }
+                optsEl.appendChild(btn);
+            });
+        }
+
+        window.attackPvP = (selected) => {
+            if (pvpIsResolving) return;
+            pvpIsResolving = true; 
+            
+            const petSprite = document.getElementById('pvp-p1-pet');
+            petSprite.classList.remove('pet-attack-anim');
+            void petSprite.offsetWidth;
+            petSprite.classList.add('pet-attack-anim');
+
+            if (selected === pvpCurrentQ.idiom) {
+                pvpPlayerCombo++; 
+                
+                let pStage = getPetStage(inventory.petsData[activePetId].level);
+                let pushAmt = 8; // 基礎推力提升至 8%
+                
+                // 連擊額外推力加成
+                if (pvpPlayerCombo >= 5) {
+                    pushAmt *= 1.5;
+                } else if (pvpPlayerCombo >= 3) {
+                    pushAmt *= 1.2;
+                }
+                
+                // 虛空系被動
+                if (activePetId === 6) {
+                    if (pStage === 1) pushAmt *= 1.5;
+                    else if (pStage === 2) pushAmt *= 2.0;
+                }
+                
+                if (pvpPlayerBlackhole) {
+                    pushAmt = 0;
+                    pvpPlayerBlackhole = false;
+                    showPvPFloatText("被黑洞吸收!", "#a855f7");
+                } else {
+                    showPvPFloatText(`正確! +${parseFloat(pushAmt.toFixed(1))}%`, "#38bdf8");
+                }
+
+                pvpProgress = Math.min(100, pvpProgress + pushAmt);
+                
+                triggerPlayerSkills(pStage);
+                updatePvPUI();
+                setTimeout(nextPvPTurn, 400);
+            } else {
+                pvpPlayerCombo = 0;
+                let penalty = 3;
+                let pStage = getPetStage(inventory.petsData[activePetId].level);
+                
+                if (activePetId === 6) {
+                    if (pStage === 1) penalty *= 1.5;
+                    else if (pStage === 2) penalty *= 2.0;
+                }
+
+                if (pvpPlayerShields > 0) {
+                    pvpPlayerShields--;
+                    penalty = 0;
+                    showPvPFloatText("護盾抵擋!", "#34d399");
+                } else {
+                    document.getElementById('screen-pvp').classList.add('shake');
+                    setTimeout(() => document.getElementById('screen-pvp').classList.remove('shake'), 400);
+                    showPvPFloatText(`失誤! -${penalty}%`, "#ef4444");
+                }
+
+                pvpProgress = Math.max(0, pvpProgress - penalty);
+                updatePvPUI();
+                setTimeout(nextPvPTurn, 800);
+            }
+        };
+
+        function triggerPlayerSkills(stage) {
+            if (stage === 0) return; 
+            
+            if (activePetId === 1) {
+                if (stage === 1 && pvpPlayerCombo > 0 && pvpPlayerCombo % 5 === 0) {
+                    showSkillEffect("p1", "🔥 燒毀干擾！"); pvpAiPausedUntil = Date.now() + 2000;
+                } else if (stage === 2 && pvpPlayerCombo > 0 && pvpPlayerCombo % 3 === 0) {
+                    showSkillEffect("p1", "🔥🔥 雙重燒毀！"); pvpAiPausedUntil = Date.now() + 3000;
+                }
+            }
+            if (activePetId === 3) {
+                if (stage === 1 && pvpPlayerCombo > 0 && pvpPlayerCombo % 5 === 0 && pvpPlayerShields < 1) {
+                    pvpPlayerShields = 1; showSkillEffect("p1", "🪨 護盾生成！");
+                } else if (stage === 2 && pvpPlayerCombo > 0 && pvpPlayerCombo % 3 === 0 && pvpPlayerShields < 2) {
+                    pvpPlayerShields++; showSkillEffect("p1", "🪨 護盾強化！");
+                }
+            }
+            if (activePetId === 4) {
+                if (stage === 1 && pvpPlayerCombo > 0 && pvpPlayerCombo % 4 === 0) {
+                    showSkillEffect("p1", "🧊 凍結對手！"); pvpAiPausedUntil = Date.now() + 1500;
+                } else if (stage === 2 && pvpPlayerCombo > 0 && pvpPlayerCombo % 3 === 0) {
+                    showSkillEffect("p1", "❄️ 絕對凍結！"); pvpAiPausedUntil = Date.now() + 2000;
+                }
+            }
+            if (activePetId === 5) {
+                if (stage === 1 && pvpPlayerCombo > 0 && pvpPlayerCombo % 4 === 0) {
+                    showSkillEffect("p1", "🌪️ 大風吹！"); pvpAiPausedUntil = Date.now() + 1500;
+                } else if (stage === 2 && pvpPlayerCombo > 0 && pvpPlayerCombo % 2 === 0) {
+                    showSkillEffect("p1", "🌪️ 極速大風吹！"); pvpAiPausedUntil = Date.now() + 2000;
+                }
+            }
+            if (activePetId === 6) {
+                if (stage === 2 && pvpPlayerCombo > 0 && pvpPlayerCombo % 5 === 0) {
+                    showSkillEffect("p1", "🌌 釋放黑洞！"); pvpAiBlackhole = true;
+                }
+            }
+        }
+
+        function showPvPFloatText(text, color) {
+            const el = document.getElementById('pvp-float-text');
+            el.innerText = text; el.style.color = color;
+            el.classList.remove('crit-text'); void el.offsetWidth; el.classList.add('crit-text');
+        }
+
+        function showSkillEffect(playerStr, text) {
+            const el = document.getElementById(`pvp-${playerStr}-effect`);
+            el.innerText = text;
+            el.classList.remove('crit-text'); void el.offsetWidth; el.classList.add('crit-text');
+        }
+
+        function startAiLoop() {
+            let minDelay = 12000;
+            let maxDelay = 15000;
+            let accRate = 0.7;
+            if(pvpAiDifficulty === 'hard') { minDelay = 8000; maxDelay = 12000; accRate = 0.85; }
+            if(pvpAiDifficulty === 'hell') { minDelay = 5000; maxDelay = 8000; accRate = 0.95; }
+            if(pvpAiDifficulty === 'abyss') { minDelay = 3000; maxDelay = 5000; accRate = 0.99; }
+
+            function scheduleNextAiTick() {
+                if (document.getElementById('screen-pvp').classList.contains('active') === false || pvpTimeLeft <= 0) return;
+
+                let delay = minDelay + Math.random() * (maxDelay - minDelay); 
+                
+                pvpAiTickInterval = setTimeout(() => {
+                    if (Date.now() < pvpAiPausedUntil) {
+                        showSkillEffect("p2", "被控場中...");
+                        scheduleNextAiTick();
+                        return;
+                    }
+
+                    const petSprite = document.getElementById('pvp-p2-pet');
+                    petSprite.classList.remove('pet-attack-anim');
+                    void petSprite.offsetWidth;
+                    petSprite.classList.add('pet-attack-anim');
+
+                    let isCorrect = Math.random() < accRate;
+                    if (isCorrect) {
+                        pvpAiCombo++;
+                        let pushAmt = 3; // AI 反推力下調至 3%
+                        if (pvpAiBlackhole) { pushAmt = 0; pvpAiBlackhole = false; showSkillEffect("p2", "分數被吸走!"); }
+                        
+                        let pStage = getPetStage(inventory.petsData[activePetId].level);
+                        if (activePetId === 2) {
+                            if (pStage === 1) pushAmt *= 0.85;
+                            else if (pStage === 2) pushAmt *= 0.70;
+                        }
+                        
+                        pvpProgress -= pushAmt;
+                        updatePvPUI();
+                        triggerAiSkills();
+
+                    } else {
+                        pvpAiCombo = 0;
+                        let pStage = getPetStage(inventory.petsData[activePetId].level);
+                        if (activePetId === 2 && pStage === 2) {
+                            document.getElementById('pvp-flash-overlay').classList.remove('hidden');
+                            document.getElementById('pvp-flash-overlay').classList.remove('pvp-flash');
+                            void document.getElementById('pvp-flash-overlay').offsetWidth;
+                            document.getElementById('pvp-flash-overlay').classList.add('pvp-flash');
+                            setTimeout(()=>document.getElementById('pvp-flash-overlay').classList.add('hidden'), 500);
+                        }
+                        updatePvPUI();
+                    }
+
+                    if (pvpProgress >= 100 || pvpProgress <= 0) {
+                        endPvPGame();
+                    } else {
+                        scheduleNextAiTick();
+                    }
+
+                }, delay);
+            }
+            scheduleNextAiTick();
+        }
+
+        function triggerAiSkills() {
+            let chance = pvpAiDifficulty === 'abyss' ? 0.4 : (pvpAiDifficulty === 'hell' ? 0.2 : 0.05);
+            if (Math.random() < chance) {
+                let rSkill = Math.floor(Math.random() * 4); 
+                if (rSkill === 0) {
+                    pvpPlayerOptsBurnt = 1; showSkillEffect("p2", "🔥 火球噴射！"); renderPvPOptions();
+                } else if (rSkill === 1) {
+                    showSkillEffect("p2", "🧊 凍結！"); 
+                    let opts = document.querySelectorAll('.pvp-opt');
+                    opts.forEach(btn => btn.disabled = true);
+                    setTimeout(renderPvPOptions, 1500);
+                } else if (rSkill === 2) {
+                    showSkillEffect("p2", "🌪️ 洗牌！");
+                    let optsEl = document.getElementById('pvp-options');
+                    for (let i = optsEl.children.length; i >= 0; i--) {
+                        optsEl.appendChild(optsEl.children[Math.random() * i | 0]);
+                    }
+                } else if (rSkill === 3) {
+                    pvpPlayerBlackhole = true; showSkillEffect("p2", "🌌 吞噬黑洞！"); renderPvPOptions();
+                }
+            }
+        }
+
+        function endPvPGame() {
+            clearInterval(pvpTimerInterval);
+            clearInterval(pvpAiTickInterval);
+            
+            let isWin = pvpProgress >= 50; 
+            let msg = isWin ? "競技勝利！" : "不幸戰敗！";
+            let color = isWin ? "text-yellow-400" : "text-rose-400";
+            
+            // 只有非 AI 的真實玩家對戰，才計入 PK 勝率榜
+            if (pvpOpponentType !== 'ai') {
+                inventory.pkTotal++;
+                if (isWin) inventory.pkWins++;
+            }
+            
+            let timeUsed = 60 - pvpTimeLeft;
+            if (isWin && pvpOpponentType === 'ai') {
+                if (timeUsed < inventory.aiRecords[pvpAiDifficulty]) {
+                    inventory.aiRecords[pvpAiDifficulty] = timeUsed;
+                }
+            }
+            
+            let stardustReward = isWin ? 300 : 50;
+            inventory.stardust += stardustReward;
+            
+            saveInventory();
+            
+            showVictory(msg, `<span class="${color}">時間: ${timeUsed}秒<br>獲得 ${stardustReward} 星塵幣</span>`);
+            setTimeout(() => {
+                if (pvpOpponentType === 'ai') {
+                    window.goToAILeaderboard(pvpAiDifficulty);
+                } else {
+                    window.switchBoard('pkwin');
+                }
+            }, 3500);
+        }
+
+        /* ================= 幻獸培育室 ================= */
+        let currentViewIdx = 0;
+
+        window.showPetRoom = () => { showScreen('pet'); currentViewIdx = 0; renderPet(); };
+
+        window.nextPet = () => { currentViewIdx = (currentViewIdx + 1) % 6; renderPet(); };
+        window.prevPet = () => { currentViewIdx = (currentViewIdx - 1 + 6) % 6; renderPet(); };
+
+        function renderPet() {
+            let viewId = currentViewIdx + 1;
+            let isUnlocked = inventory.unlockedPets.includes(viewId);
+            const pet = PET_DEX[viewId];
+            
+            let stage = 0;
+            if (isUnlocked) {
+                stage = getPetStage(inventory.petsData[viewId].level);
+            }
+
+            if (isUnlocked) {
+                document.getElementById('pet-sprite').innerHTML = `<img src="${pet.images[stage]}" class="max-w-full max-h-full object-contain">`;
+                document.getElementById('pet-name').innerText = pet.stageNames[stage];
+                document.getElementById('pet-name').className = `text-3xl font-black mb-1 ${pet.color}`;
+                
+                let pData = inventory.petsData[viewId];
+                document.getElementById('pet-desc').innerText = `技能：${pet.skillDesc}`;
+                
+                if (pData.level >= 30) {
+                    document.getElementById('pet-level-badge').innerText = `Lv. 30 (Max)`;
+                    document.getElementById('pet-stone-req').innerHTML = `<i class="fas fa-lock"></i> 等待更新開放更高境界`;
+                    document.getElementById('pet-stone-req').classList.remove('hidden');
+                    document.getElementById('pet-exp-text').innerText = `- / -`;
+                    document.getElementById('pet-exp-bar').style.width = `100%`;
+                } else {
+                    document.getElementById('pet-level-badge').innerText = `Lv. ${pData.level}`;
+                    document.getElementById('pet-exp-text').innerText = `${pData.exp} / ${pData.level}`;
+                    document.getElementById('pet-exp-bar').style.width = `${Math.min(100, (pData.exp/pData.level)*100)}%`;
+                    
+                    let stoneCost = (pData.level === 9) ? 2 : ((pData.level === 19) ? 4 : 0);
+                    if (stoneCost > 0) {
+                        document.getElementById('pet-stone-req').innerHTML = `<i class="fas fa-gem"></i> 突破需 ${stoneCost} 顆進化石`;
+                        document.getElementById('pet-stone-req').classList.remove('hidden');
+                    } else {
+                        document.getElementById('pet-stone-req').classList.add('hidden');
+                    }
+                }
+            } else {
+                document.getElementById('pet-sprite').innerHTML = `<div class="text-6xl text-slate-500">❓</div>`;
+                document.getElementById('pet-name').innerText = "未解鎖";
+                document.getElementById('pet-name').className = `text-3xl font-black mb-1 text-slate-500`;
+                document.getElementById('pet-level-badge').innerText = `Lv. ?`;
+                document.getElementById('pet-desc').innerText = "參與星空召喚解鎖。";
+                document.getElementById('pet-stone-req').classList.add('hidden');
+                document.getElementById('pet-exp-text').innerText = `0 / 0`;
+                document.getElementById('pet-exp-bar').style.width = `0%`;
+            }
+        }
+
+        window.feedPet = () => {
+            let viewId = currentViewIdx + 1;
+            if (!inventory.unlockedPets.includes(viewId)) return showToast("尚未解鎖此幻獸！", "#ef4444");
+            
+            let pData = inventory.petsData[viewId];
+            if (pData.level >= 30) return showToast("已達最高等級，等待系統更新！", "#f59e0b");
+
+            let isLv9 = pData.level === 9;
+            let isLv19 = pData.level === 19;
+            let stoneCost = isLv9 ? 2 : (isLv19 ? 4 : 0);
+
+            if (inventory.meat < 1) return showToast("肉塊不足！去打隕石防禦戰吧", "#ef4444");
+            
+            if (pData.exp + 1 >= pData.level) {
+                if (stoneCost > 0 && inventory.stones < stoneCost) {
+                    return showToast(`突破境界需 ${stoneCost} 顆進化石！`, "#ef4444");
+                }
+                inventory.meat--; 
+                if (stoneCost > 0) inventory.stones -= stoneCost;
+                pData.exp = 0; 
+                pData.level++;
+                showToast("境界突破！進化成功！", "#10b981");
+            } else {
+                inventory.meat--; 
+                pData.exp++;
+            }
+            saveInventory(); renderPet();
+        };
+
+        window.feedPetMax = () => {
+            let viewId = currentViewIdx + 1;
+            if (!inventory.unlockedPets.includes(viewId)) return showToast("尚未解鎖此幻獸！", "#ef4444");
+            
+            let pData = inventory.petsData[viewId];
+            if (pData.level >= 30) return showToast("已達最高等級，等待系統更新！", "#f59e0b");
+
+            let needed = pData.level - pData.exp;
+            let isLv9 = pData.level === 9;
+            let isLv19 = pData.level === 19;
+            let stoneCost = isLv9 ? 2 : (isLv19 ? 4 : 0);
+
+            if (inventory.meat < needed) return showToast("肉塊不夠直升一級！", "#ef4444");
+            if (stoneCost > 0 && inventory.stones < stoneCost) {
+                return showToast(`突破境界需 ${stoneCost} 顆進化石！`, "#ef4444");
+            }
+            
+            inventory.meat -= needed; 
+            if (stoneCost > 0) inventory.stones -= stoneCost;
+            pData.level++; 
+            pData.exp = 0;
+            showToast(`一鍵升級成功！Lv.${pData.level}`, "#10b981");
+            saveInventory(); renderPet();
+        }
+
+        /* ================= 星空召喚陣 ================= */
+        window.showGacha = () => {
+            showScreen('gacha');
+            document.getElementById('gacha-stardust-display').innerText = Math.floor(inventory.stardust);
+            document.getElementById('gacha-result').classList.remove('scale-100');
+            document.getElementById('gacha-result').classList.add('scale-0');
+        };
+
+        window.drawGacha = () => {
+            if (inventory.stardust < 100) return showToast("星塵幣不足 100！", "#ef4444");
+            
+            inventory.stardust -= 100; saveInventory();
+            document.getElementById('gacha-stardust-display').innerText = Math.floor(inventory.stardust);
+
+            const circle = document.getElementById('gacha-circle'); circle.classList.add('gacha-magic');
+            setTimeout(() => { circle.classList.remove('gacha-magic'); showGachaResult(); }, 2000);
+        };
+
+        function showGachaResult() {
+            const rand = Math.random();
+            let resultBox = document.getElementById('gacha-result');
+            let icon = document.getElementById('gacha-result-icon');
+            let text = document.getElementById('gacha-result-text');
+            
+            if (rand < 0.25) { 
+                let rolledPetId = Math.floor(Math.random() * 6) + 1; 
+                if (!inventory.unlockedPets.includes(rolledPetId)) {
+                    inventory.unlockedPets.push(rolledPetId);
+                    inventory.petsData[rolledPetId] = { level: 1, exp: 0 };
+                    icon.innerHTML = `<img src="${PET_DEX[rolledPetId].images[0]}" class="max-w-full max-h-full object-contain">`;
+                    text.innerHTML = `<span class="text-yellow-400">獲得新幻獸：${PET_DEX[rolledPetId].stageNames[0]}！</span>`;
+                    saveInventory();
+                } else {
+                    icon.innerHTML = `<img src="${PET_DEX[rolledPetId].images[0]}" class="max-w-full max-h-full object-contain grayscale">`;
+                    text.innerHTML = `<span class="text-slate-400">檢測到已擁有的基因...</span>`;
+                    resultBox.classList.remove('scale-0'); resultBox.classList.add('scale-100');
+                    setTimeout(() => {
+                        resultBox.classList.remove('scale-100'); resultBox.classList.add('scale-0');
+                        document.getElementById('modal-duplicate').classList.remove('hidden');
+                        document.getElementById('modal-duplicate').classList.add('flex');
+                    }, 2500);
+                    return; 
+                }
+            } else if (rand < 0.5) { 
+                inventory.stones += 2; icon.innerHTML = `<div class="text-5xl">💎</div>`; text.innerHTML = `<span class="text-purple-400">獲得 進化石 x2</span>`;
+                saveInventory();
+            } else { 
+                inventory.meat += 5; icon.innerHTML = `<div class="text-5xl">🍖</div>`; text.innerHTML = `<span class="text-red-400">獲得 營養肉塊 x5</span>`;
+                saveInventory();
+            }
+
+            resultBox.classList.remove('scale-0'); resultBox.classList.add('scale-100');
+            setTimeout(() => { resultBox.classList.remove('scale-100'); resultBox.classList.add('scale-0'); }, 3000);
+        }
+
+        window.claimCompensation = (type) => {
+            document.getElementById('modal-duplicate').classList.add('hidden'); document.getElementById('modal-duplicate').classList.remove('flex');
+            if (type === 'meat') { inventory.meat += 6; showToast("獲得 肉塊 x6", "#ef4444"); } 
+            else if (type === 'mixed') { inventory.stones += 1; inventory.meat += 2; showToast("獲得 進化石 x1, 肉塊 x2", "#a855f7"); } 
+            else if (type === 'shard') { inventory.universalShards += 1; showToast("獲得 萬能碎片 x1", "#ec4899"); setTimeout(checkUniversalShards, 1500); }
+            saveInventory();
+        };
+
+        function checkUniversalShards() {
+            if (inventory.universalShards >= 3) {
+                let unowned = [1,2,3,4,5,6].filter(id => !inventory.unlockedPets.includes(id));
+                if (unowned.length > 0) {
+                    inventory.universalShards -= 3;
+                    let newPetId = unowned[Math.floor(Math.random() * unowned.length)];
+                    inventory.unlockedPets.push(newPetId);
+                    inventory.petsData[newPetId] = { level: 1, exp: 0 };
+                    saveInventory();
+                    showVictory("碎片共鳴成功！", `<span class="text-pink-400">強制解鎖新幻獸：${PET_DEX[newPetId].stageNames[0]}！</span>`);
+                } else { showToast("圖鑑已全滿！碎片為您保留。", "#f59e0b"); }
+            }
+        }
+
+        /* ================= 雲端全班榮譽榜 ================= */
+        let currentBoard = 'wealth';
+        
+        function setupLeaderboardListener() {
+            const usersRef = collection(db, 'users');
+            onSnapshot(usersRef, (snapshot) => {
+                allUsersData = []; snapshot.forEach(doc => { allUsersData.push({ id: doc.id, ...doc.data() }); });
+                if(document.getElementById('screen-leaderboard').classList.contains('active')) renderLeaderboard();
+            }, (error) => console.error("讀取榜單失敗", error));
+        }
+
+        function initBossSelect() {
+            const bossSelect = document.getElementById('leaderboard-boss-select');
+            bossSelect.innerHTML = '';
+            if (currentBoard === 'speed') {
+                BOSS_DATA.forEach(boss => {
+                    let opt = document.createElement('option');
+                    opt.value = boss.id; opt.innerText = boss.name;
+                    bossSelect.appendChild(opt);
+                });
+            } else if (currentBoard === 'aispeed') {
+                let aiModes = [
+                    {val: 'normal', name: '🟢 AI 訓練機器人'},
+                    {val: 'hard', name: '🟡 AI 菁英護衛'},
+                    {val: 'hell', name: '🔴 AI 星際指揮官'},
+                    {val: 'abyss', name: '☠️ AI 最終兵器'}
+                ];
+                aiModes.forEach(m => {
+                    let opt = document.createElement('option');
+                    opt.value = m.val; opt.innerText = m.name;
+                    bossSelect.appendChild(opt);
+                });
+            }
+        }
+
+        window.showLeaderboard = () => { 
+            showScreen('leaderboard'); 
+            initBossSelect();
+            renderLeaderboard(); 
+        };
+
+        window.goToBossLeaderboard = (bossId) => {
+            currentBoard = 'speed';
+            updateTabUI();
+            initBossSelect();
+            document.getElementById('boss-leaderboard-filter').classList.remove('hidden');
+            document.getElementById('leaderboard-boss-select').value = bossId;
+            showScreen('leaderboard');
+            renderLeaderboard();
+        };
+
+        window.goToDefenseLeaderboard = () => {
+            currentBoard = 'defense';
+            updateTabUI();
+            document.getElementById('boss-leaderboard-filter').classList.add('hidden');
+            showScreen('leaderboard');
+            renderLeaderboard();
+        };
+        
+        window.goToAILeaderboard = (diff) => {
+            currentBoard = 'aispeed';
+            updateTabUI();
+            initBossSelect();
+            document.getElementById('boss-leaderboard-filter').classList.remove('hidden');
+            document.getElementById('leaderboard-boss-select').value = diff;
+            showScreen('leaderboard');
+            renderLeaderboard();
+        }
+
+        window.switchBoard = (board) => {
+            currentBoard = board;
+            updateTabUI();
+            
+            if (currentBoard === 'speed' || currentBoard === 'aispeed') {
+                document.getElementById('boss-leaderboard-filter').classList.remove('hidden');
+                initBossSelect();
+            } else {
+                document.getElementById('boss-leaderboard-filter').classList.add('hidden');
+            }
+            
+            renderLeaderboard();
+        };
+
+        function updateTabUI() {
+            ['wealth', 'speed', 'defense', 'scholar', 'pkwin', 'aispeed'].forEach(b => {
+                let el = document.getElementById(`tab-${b}`);
+                if (el) {
+                    el.className = `px-4 py-2 rounded-full text-xs md:text-sm font-bold shrink-0 transition snap-center ${b === currentBoard ? 'bg-purple-700 text-white shadow-[0_0_10px_purple]' : 'bg-slate-800 text-slate-400 border border-slate-600'}`;
+                }
+            });
+        }
+
+        function renderLeaderboard() {
+            const listEl = document.getElementById('leaderboard-list'); 
+            listEl.innerHTML = '';
+            
+            let sortedData = [...allUsersData];
+            let valueKey = '', unit = '', formatFn = (val) => val;
+            
+            let myCurrentScore = null;
+            let hasPlayed = false;
+
+            if (currentBoard === 'wealth') {
+                sortedData.sort((a, b) => (b.stardust || 0) - (a.stardust || 0));
+                valueKey = 'stardust'; unit = '星塵'; formatFn = Math.floor;
+                myCurrentScore = inventory.stardust || 0;
+                hasPlayed = true;
+            } else if (currentBoard === 'speed') {
+                const selectedBossId = document.getElementById('leaderboard-boss-select').value;
+                sortedData = sortedData.map(u => {
+                    let bossTime = (u.bossRecords && u.bossRecords[selectedBossId]) ? u.bossRecords[selectedBossId] : 999;
+                    return { ...u, currentBossTime: bossTime };
+                });
+                sortedData = sortedData.filter(u => u.currentBossTime < 999);
+                sortedData.sort((a, b) => a.currentBossTime - b.currentBossTime);
+                valueKey = 'currentBossTime'; unit = '秒'; formatFn = (v) => v.toFixed(1);
+                
+                if (inventory.bossRecords && inventory.bossRecords[selectedBossId]) {
+                    myCurrentScore = inventory.bossRecords[selectedBossId];
+                    hasPlayed = true;
+                }
+            } else if (currentBoard === 'defense') {
+                sortedData.sort((a, b) => (b.maxMeteorWaves || 0) - (a.maxMeteorWaves || 0));
+                valueKey = 'maxMeteorWaves'; unit = '波';
+                myCurrentScore = inventory.maxMeteorWaves || 0;
+                if (myCurrentScore > 0) hasPlayed = true;
+            } else if (currentBoard === 'scholar') {
+                sortedData = sortedData.filter(u => (u.totalAnswered || 0) >= 10);
+                sortedData.forEach(u => u.accuracy = (u.correctAnswers / u.totalAnswered) * 100);
+                sortedData.sort((a, b) => b.accuracy - a.accuracy);
+                valueKey = 'accuracy'; unit = '%正確'; formatFn = (v) => v.toFixed(1);
+                
+                if (inventory.totalAnswered > 0) {
+                    myCurrentScore = (inventory.correctAnswers / inventory.totalAnswered) * 100;
+                    hasPlayed = true;
+                }
+            } else if (currentBoard === 'pkwin') {
+                sortedData = sortedData.filter(u => (u.pkTotal || 0) >= 10);
+                sortedData.forEach(u => u.winRate = (u.pkWins / u.pkTotal) * 100);
+                sortedData.sort((a, b) => {
+                    if (b.winRate === a.winRate) return b.pkWins - a.pkWins;
+                    return b.winRate - a.winRate;
+                });
+                valueKey = 'winRate'; unit = '%勝率'; formatFn = (v) => v.toFixed(1);
+                
+                if (inventory.pkTotal > 0) {
+                    myCurrentScore = (inventory.pkWins / inventory.pkTotal) * 100;
+                    hasPlayed = true;
+                }
+            } else if (currentBoard === 'aispeed') {
+                const aiDifficulty = document.getElementById('leaderboard-boss-select').value;
+                sortedData = sortedData.map(u => {
+                    let aiTime = (u.aiRecords && u.aiRecords[aiDifficulty]) ? u.aiRecords[aiDifficulty] : 999;
+                    return { ...u, currentAiTime: aiTime };
+                });
+                sortedData = sortedData.filter(u => u.currentAiTime < 999);
+                sortedData.sort((a, b) => a.currentAiTime - b.currentAiTime);
+                valueKey = 'currentAiTime'; unit = '秒'; formatFn = (v) => v.toFixed(1);
+                
+                if (inventory.aiRecords && inventory.aiRecords[aiDifficulty] < 999) {
+                    myCurrentScore = inventory.aiRecords[aiDifficulty];
+                    hasPlayed = true;
+                }
+            }
+
+            let isUserRanked = false;
+
+            sortedData.forEach((user, index) => {
+                let rankIcon = `<span class="text-slate-400 font-bold">#${index + 1}</span>`;
+                let bgClass = "bg-slate-800";
+                
+                const isMe = currentUser && user.id === currentUser.uid;
+                
+                if (isMe) {
+                    isUserRanked = true;
+                    bgClass = "bg-cyan-900/60 border-2 border-cyan-400 shadow-[0_0_15px_cyan] scale-[1.02] transform transition-all z-10 relative";
+                } else {
+                    if (index === 0) { rankIcon = "🥇"; bgClass = "bg-yellow-900/40 border border-yellow-500"; }
+                    else if (index === 1) { rankIcon = "🥈"; bgClass = "bg-slate-700 border border-slate-400"; }
+                    else if (index === 2) { rankIcon = "🥉"; bgClass = "bg-orange-900/40 border border-orange-700"; }
+                }
+
+                let val = user[valueKey] !== undefined ? formatFn(user[valueKey]) : 0;
+                let displayName = user.customName || user.displayName || '神秘使者';
+                
+                let extraInfo = '';
+                if (currentBoard === 'pkwin') {
+                    extraInfo = `<div class="text-xs text-indigo-400 mt-1">${user.pkWins}勝 / ${user.pkTotal}場</div>`;
+                }
+
+                let item = document.createElement('div');
+                if (isMe) item.id = 'my-rank-row'; 
+                item.className = `leaderboard-item p-3 rounded-xl flex justify-between items-center ${bgClass}`;
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="text-2xl w-8 text-center">${rankIcon}</div>
+                        <div class="flex flex-col">
+                            <div class="font-bold ${isMe ? 'text-cyan-300' : 'text-white'}">
+                                ${displayName}
+                                ${isMe ? '<span class="text-[10px] bg-cyan-600 px-1 rounded ml-1 text-white">我</span>' : ''}
+                            </div>
+                            ${extraInfo}
+                        </div>
+                    </div>
+                    <div class="text-base md:text-lg font-black ${isMe ? 'text-cyan-200' : 'text-purple-300'}">
+                        ${val} <span class="text-[10px] md:text-xs ${isMe ? 'text-cyan-400' : 'text-slate-400'}">${unit}</span>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+            
+            if (currentUser && !isUserRanked) {
+                let unrankedMsg = '尚未挑戰';
+                let scoreDisplay = '-';
+                
+                if (hasPlayed && myCurrentScore !== null) {
+                    unrankedMsg = '尚未入榜';
+                    if (currentBoard === 'scholar' && inventory.totalAnswered < 10) unrankedMsg = '需答滿10題';
+                    if (currentBoard === 'pkwin' && inventory.pkTotal < 10) unrankedMsg = '需打滿10場';
+                    scoreDisplay = `${formatFn(myCurrentScore)} <span class="text-[10px] md:text-xs">${unit}</span>`;
+                }
+                
+                let extraInfo = '';
+                if (currentBoard === 'pkwin' && hasPlayed) {
+                    extraInfo = `<div class="text-xs text-slate-500 mt-1">${inventory.pkWins}勝 / ${inventory.pkTotal}場</div>`;
+                }
+
+                let item = document.createElement('div');
+                item.id = 'my-rank-row'; 
+                item.className = `leaderboard-item p-3 rounded-xl flex justify-between items-center bg-slate-800/80 border-2 border-dashed border-slate-500 mt-2 opacity-90`;
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="text-xl w-8 text-center text-slate-500 font-bold">-</div>
+                        <div class="flex flex-col">
+                            <div class="font-bold text-slate-300">
+                                ${inventory.customName || '我'}
+                                <span class="text-[10px] md:text-xs bg-slate-600 px-2 py-0.5 rounded ml-2 text-white">${unrankedMsg}</span>
+                            </div>
+                            ${extraInfo}
+                        </div>
+                    </div>
+                    <div class="text-base md:text-lg font-black text-slate-400">
+                        ${scoreDisplay}
+                    </div>
+                `;
+                listEl.appendChild(item);
+            }
+
+            if (listEl.children.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-slate-500 mt-10 text-sm md:text-base">目前榜單空缺，等你來挑戰！</div>'; 
+            }
+
+            setTimeout(() => {
+                const myRow = document.getElementById('my-rank-row');
+                if (myRow) {
+                    myRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 300);
+        }
+    </script>
+</body>
+</html>
