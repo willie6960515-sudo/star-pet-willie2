@@ -638,7 +638,7 @@
             持有星塵幣: <span id="gacha-stardust-display">0</span>
         </div>
         <button onclick="drawGacha()" class="btn-press w-full max-w-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white text-lg md:text-xl font-bold py-3 md:py-4 rounded-full shadow-[0_0_20px_rgba(219,39,119,0.5)] border-b-4 border-purple-800 mb-6 shrink-0">
-            啟動召喚 (消耗 100 星塵)
+            啟初召喚 (消耗 100 星塵)
         </button>
         <button onclick="goHome()" class="text-slate-400 font-bold underline shrink-0">返回基地</button>
     </main>
@@ -839,7 +839,7 @@
                     "https://i.postimg.cc/xJF2vb2G/29-xu-kong-mo-ling.png",
                     "https://i.postimg.cc/tnZH2CR1/30-hei-dong-tun-shi-zhe.png"
                 ],
-                color: "text-purple-500", skillName: "暴擊吞噬", skillDesc: "快答暴擊傷害變為 2.5 倍，但裝甲只有 1 格。",
+                color: "text-purple-500", skillName: "暴擊吞噬", skillDesc: "快答暴擊傷害變為 2.5 倍，開場裝甲只有 1 格。",
                 pvpSkillName: "虛空吞噬",
                 pvpSkillDesc: "[Lv.10] 推力與受擊皆變為 1.5倍\n[Lv.20] 推力 2倍 + 5連擊吸走對手分數"
             }
@@ -959,9 +959,13 @@
         async function saveInventory() {
             if (!currentUser) return;
             updateHUD();
+            
+            // 核心防護：將資料字串化後再轉回，自動過濾掉所有的 undefined 值，確保 Firebase 不會崩潰罷工
+            const cleanInventory = JSON.parse(JSON.stringify(inventory));
+            
             const userRef = doc(db, 'users', currentUser.uid);
-            updateDoc(userRef, inventory).catch(e => {
-                setDoc(userRef, inventory).catch(err => console.error("同步失敗", err));
+            updateDoc(userRef, cleanInventory).catch(e => {
+                setDoc(userRef, cleanInventory).catch(err => console.error("同步失敗", err));
             });
         }
 
@@ -1195,6 +1199,16 @@
                 inventory.pkWins = 0;
                 inventory.pkTotal = 0;
                 saveInventory();
+                
+                // 本地清空 allUsersData 中自己的資料，確保 UI 立刻反應
+                if(currentUser) {
+                    let myIdx = allUsersData.findIndex(u => u.id === currentUser.uid);
+                    if (myIdx !== -1) {
+                        allUsersData[myIdx].bossRecords = {};
+                        allUsersData[myIdx].aiRecords = { normal: 999, hard: 999, hell: 999, abyss: 999 };
+                    }
+                }
+                
                 showToast("異常成績已淨化！請重新挑戰", "#10b981");
             });
         };
@@ -2365,9 +2379,19 @@
             const listEl = document.getElementById('leaderboard-list');
             listEl.innerHTML = '';
 
-            let sortedData = [...allUsersData];
-            let valueKey = '', unit = '', formatFn = (val) => val;
+            // 深拷貝雲端資料，並強制將當前玩家的最新的「本地進度」同步進排序池中
+            let sortedData = JSON.parse(JSON.stringify(allUsersData));
+            
+            if (currentUser) {
+                let myIdx = sortedData.findIndex(u => u.id === currentUser.uid);
+                if (myIdx !== -1) {
+                    sortedData[myIdx] = Object.assign(sortedData[myIdx], inventory);
+                } else {
+                    sortedData.push({ id: currentUser.uid, ...inventory });
+                }
+            }
 
+            let valueKey = '', unit = '', formatFn = (val) => val;
             let myCurrentScore = null;
             let hasPlayed = false;
 
@@ -2454,9 +2478,6 @@
                 myRank = sortedData.findIndex(u => u.id === currentUser.uid);
             }
 
-            console.log(`[榜單更新] 模式: ${currentBoard}, 篩選條件: ${document.getElementById('leaderboard-boss-select') ? document.getElementById('leaderboard-boss-select').value : '無'}`);
-            console.log(`[榜單更新] 該條件上榜總人數: ${sortedData.length}, 我的真實名次: ${myRank !== -1 ? myRank + 1 : '未入榜'}`);
-
             const displayData = sortedData.slice(0, TOP_N);
 
             displayData.forEach((user, index) => {
@@ -2508,7 +2529,7 @@
                 let scoreDisplay = '-';
                 let rankText = '-';
 
-                if (myRank >= TOP_N) {
+                if (myRank !== -1 && myRank >= TOP_N) {
                     unrankedMsg = `真實排名：${myRank + 1}`;
                     rankText = `#${myRank + 1}`;
                     let myData = sortedData[myRank];
